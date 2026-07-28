@@ -3,11 +3,10 @@
 namespace Zephyrisle\FlarumZaiBot\Listener;
 
 use Carbon\Carbon;
-use Flarum\Post\Command\PostReply;
+use Flarum\Post\CommentPost;
 use Flarum\Post\Event\Posted;
 use Flarum\User\User;
 use Flarum\Settings\SettingsRepositoryInterface;
-use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\Support\Str;
 use Zephyrisle\FlarumZaiBot\Service\AIService;
 
@@ -17,8 +16,7 @@ class ReplyToPost
 
     public function __construct(
         protected SettingsRepositoryInterface $settings,
-        protected AIService $ai,
-        protected Dispatcher $bus
+        protected AIService $ai
     ) {}
 
     public function handle(Posted $event): void
@@ -95,11 +93,12 @@ class ReplyToPost
         }
 
         try {
-            $this->bus->dispatch(
-                new PostReply($post->discussion_id, $botUser, ['content' => $reply])
-            );
+            $botPost = new CommentPost();
+            $botPost->discussion_id = $post->discussion_id;
+            $botPost->user_id = $botUser->id;
+            $botPost->content = $reply;
+            $botPost->save();
         } catch (\Exception $e) {
-            // Log or silently fail
         }
     }
 }
