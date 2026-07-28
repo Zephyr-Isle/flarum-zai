@@ -88,7 +88,7 @@ class ReplyToPost
             $botPost = new CommentPost();
             $botPost->discussion_id = $post->discussion_id;
             $botPost->user_id = $botUser->id;
-            $botPost->setContentAttribute($reply, $botUser);
+            $botPost->setParsedContentAttribute($reply);
             $botPost->save();
         } catch (\Exception $e) {
         }
