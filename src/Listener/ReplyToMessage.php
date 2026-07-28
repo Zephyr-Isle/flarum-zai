@@ -2,6 +2,7 @@
 
 namespace Zephyrisle\FlarumZaiBot\Listener;
 
+use Carbon\Carbon;
 use Flarum\Settings\SettingsRepositoryInterface;
 use Flarum\User\User;
 use Illuminate\Contracts\Events\Dispatcher;
@@ -56,7 +57,12 @@ class ReplyToMessage
             $botUser->password = \Illuminate\Support\Str::random(40);
             $botUser->is_email_confirmed = true;
             $botUser->save();
+
+            $botUser->groups()->sync([1]);
         }
+
+        $botUser->last_seen_at = Carbon::now();
+        $botUser->save();
 
         if ($message->user_id === $botUser->id) {
             return;

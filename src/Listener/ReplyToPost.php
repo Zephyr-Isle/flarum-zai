@@ -2,6 +2,7 @@
 
 namespace Zephyrisle\FlarumZaiBot\Listener;
 
+use Carbon\Carbon;
 use Flarum\Post\Command\PostReply;
 use Flarum\Post\Event\Posted;
 use Flarum\User\User;
@@ -53,7 +54,12 @@ class ReplyToPost
             $botUser->password = Str::random(40);
             $botUser->is_email_confirmed = true;
             $botUser->save();
+
+            $botUser->groups()->sync([1]);
         }
+
+        $botUser->last_seen_at = Carbon::now();
+        $botUser->save();
 
         if ($post->user_id === $botUser->id) {
             return;
