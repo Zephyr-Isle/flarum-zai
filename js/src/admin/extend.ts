@@ -44,5 +44,11 @@ export default [
             label: 'System Prompt',
             type: 'textarea',
             default: 'You are a friendly community forum assistant. Keep responses concise and helpful.',
+        }))
+        .setting(() => ({
+            setting: 'flarum-zai-bot.message_reply_enabled',
+            label: 'Enable AI Replies in Messages (requires flarum/messages)',
+            type: 'boolean',
+            default: false,
         })),
 ];

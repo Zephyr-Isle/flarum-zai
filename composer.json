@@ -6,6 +6,9 @@
     "require": {
         "flarum/core": "^2.0"
     },
+    "suggest": {
+        "flarum/messages": "Enables AI replies in private messages."
+    },
     "authors": [
         {
             "name": "zephyrisle",
