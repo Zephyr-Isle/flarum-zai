@@ -56,7 +56,7 @@ class ReplyToPost
             $botUser->groups()->sync([1]);
         }
 
-        $botUser->last_seen_at = Carbon::now()->addCentury();
+        $botUser->last_seen_at = Carbon::now();
         $botUser->save();
 
         if ($post->user_id === $botUser->id) {
