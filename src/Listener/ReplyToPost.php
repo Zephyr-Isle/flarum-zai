@@ -5,6 +5,7 @@ namespace Zephyrisle\FlarumZaiBot\Listener;
 use Carbon\Carbon;
 use Flarum\Post\CommentPost;
 use Flarum\Post\Event\Posted;
+use Flarum\Post\Post;
 use Flarum\User\User;
 use Flarum\Settings\SettingsRepositoryInterface;
 use Illuminate\Support\Str;
@@ -88,8 +89,12 @@ class ReplyToPost
             $botPost = new CommentPost();
             $botPost->discussion_id = $post->discussion_id;
             $botPost->user_id = $botUser->id;
+            $botPost->type = CommentPost::$type;
             $botPost->setParsedContentAttribute($reply);
-            $botPost->save();
+            $botPost->number = Post::query()
+                ->where('discussion_id', $post->discussion_id)
+                ->max('number') + 1;
+            $botPost->saveQuietly();
         } catch (\Exception $e) {
         }
     }
