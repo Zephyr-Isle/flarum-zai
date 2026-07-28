@@ -1,6 +1,6 @@
 <?php
 
-namespace Vendor\FlarumZai\Controller;
+namespace Zephyrisle\FlarumZaiBot\Controller;
 
 use Flarum\Http\RequestUtil;
 use Laminas\Diactoros\Response\JsonResponse;

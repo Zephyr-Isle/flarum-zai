@@ -1,6 +1,6 @@
 <?php
 
-namespace Vendor\FlarumZai\Listener;
+namespace Zephyrisle\FlarumZaiBot\Listener;
 
 use Flarum\Post\Command\PostReply;
 use Flarum\Post\Event\Posted;
@@ -8,7 +8,7 @@ use Flarum\User\User;
 use Flarum\Settings\SettingsRepositoryInterface;
 use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\Support\Str;
-use Vendor\FlarumZai\Service\AIService;
+use Zephyrisle\FlarumZaiBot\Service\AIService;
 
 class ReplyToPost
 {

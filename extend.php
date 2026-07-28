@@ -1,7 +1,7 @@
 <?php
 
 use Flarum\Extend;
-use Vendor\FlarumZai\Listener\ReplyToPost;
+use Zephyrisle\FlarumZaiBot\Listener\ReplyToPost;
 
 return [
     (new Extend\Frontend('forum'))

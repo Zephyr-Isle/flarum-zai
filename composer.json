@@ -1,6 +1,6 @@
 {
-    "name": "vendor/flarum-zai",
-    "description": "A Flarum v2 extension example",
+    "name": "zephyrisle/flarum-zai-bot",
+    "description": "ZAI Bot - An AI-powered bot for Flarum with OpenAI integration, @mention replies, random replies, and message extension.",
     "type": "flarum-extension",
     "license": "MIT",
     "require": {
@@ -8,21 +8,26 @@
     },
     "authors": [
         {
-            "name": "Your Name",
-            "email": "your@email.com"
+            "name": "zephyrisle",
+            "homepage": "https://github.com/Zephyr-Isle"
         }
     ],
+    "support": {
+        "source": "https://github.com/Zephyr-Isle/flarum-zai-bot",
+        "issues": "https://github.com/Zephyr-Isle/flarum-zai-bot/issues"
+    },
     "autoload": {
         "psr-4": {
-            "Vendor\\FlarumZai\\": "src/"
+            "Zephyrisle\\FlarumZaiBot\\": "src/"
         }
     },
     "extra": {
         "flarum-extension": {
-            "title": "Flarum Zai",
+            "title": "ZAI Bot",
+            "category": "feature",
             "icon": {
-                "name": "fas fa-star",
-                "backgroundColor": "#e74c3c",
+                "name": "fas fa-brain",
+                "backgroundColor": "#87CEEB",
                 "color": "#fff"
             }
         }

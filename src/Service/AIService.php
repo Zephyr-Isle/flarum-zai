@@ -1,6 +1,6 @@
 <?php
 
-namespace Vendor\FlarumZai\Service;
+namespace Zephyrisle\FlarumZaiBot\Service;
 
 use Flarum\Settings\SettingsRepositoryInterface;
 use GuzzleHttp\Client;
