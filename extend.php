@@ -1,10 +1,8 @@
 <?php
 
-use Flarum\Api\Serializer\UserSerializer;
 use Flarum\Extend;
 use Zephyrisle\FlarumZaiBot\Listener\ReplyToMessage;
 use Zephyrisle\FlarumZaiBot\Listener\ReplyToPost;
-use Zephyrisle\FlarumZaiBot\Serializer\BotUserAttributes;
 
 return [
     (new Extend\Frontend('forum'))
@@ -23,7 +21,4 @@ return [
             (new Extend\Event())
                 ->listen(\Flarum\Messages\DialogMessage\Event\Created::class, ReplyToMessage::class),
         ]),
-
-    (new Extend\ApiSerializer(UserSerializer::class))
-        ->attributes(BotUserAttributes::class),
 ];
