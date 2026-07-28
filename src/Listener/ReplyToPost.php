@@ -41,7 +41,6 @@ class ReplyToPost
 
         $botUsername = $this->settings->get('flarum-zai-bot.username', 'AIGirl');
         $randomChance = (int) $this->settings->get('flarum-zai-bot.random_reply_chance', 0);
-        $messageExt = (bool) $this->settings->get('flarum-zai-bot.message_extension', false);
 
         $botUser = User::where('username', $botUsername)->first();
 
@@ -74,13 +73,6 @@ class ReplyToPost
             $shouldReply = true;
         }
 
-        if (!$shouldReply && $messageExt) {
-            $botPosted = $discussion->posts()->where('user_id', $botUser->id)->exists();
-            if ($botPosted) {
-                $shouldReply = true;
-            }
-        }
-
         if (!$shouldReply) {
             return;
         }
@@ -96,7 +88,7 @@ class ReplyToPost
             $botPost = new CommentPost();
             $botPost->discussion_id = $post->discussion_id;
             $botPost->user_id = $botUser->id;
-            $botPost->content = $reply;
+            $botPost->setContentAttribute($reply, $botUser);
             $botPost->save();
         } catch (\Exception $e) {
         }
