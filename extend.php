@@ -1,7 +1,6 @@
 <?php
 
 use Flarum\Extend;
-use Zephyrisle\FlarumZaiBot\Console\DecayMemoriesCommand;
 use Zephyrisle\FlarumZaiBot\Listener\ReplyToMessage;
 use Zephyrisle\FlarumZaiBot\Listener\ReplyToPost;
 
@@ -25,14 +24,5 @@ return [
 
     (new Extend\Settings())
         ->default('flarum-zai-bot.personality', 'friendly')
-        ->default('flarum-zai-bot.bot_display_name', 'Yuki')
-        ->default('flarum-zai-bot.temperature', 0.8)
-        ->default('flarum-zai-bot.max_history', 10)
-        ->default('flarum-zai-bot.providers', '[]'),
-
-    (new Extend\Console())
-        ->command(DecayMemoriesCommand::class)
-        ->schedule(DecayMemoriesCommand::class, function (\Illuminate\Console\Scheduling\Event $event) {
-            $event->dailyAt('03:00');
-        }),
+        ->default('flarum-zai-bot.bot_display_name', 'Yuki'),
 ];

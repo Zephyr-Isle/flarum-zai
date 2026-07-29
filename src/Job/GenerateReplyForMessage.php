@@ -8,13 +8,12 @@ use Flarum\Queue\AbstractJob;
 use Flarum\Settings\SettingsRepositoryInterface;
 use Flarum\User\User;
 use Zephyrisle\FlarumZaiBot\Service\AIService;
-use Zephyrisle\FlarumZaiBot\Service\Memory\MemoryManager;
 use Zephyrisle\FlarumZaiBot\Service\Tool\LikeTool;
 use Zephyrisle\FlarumZaiBot\Service\Tool\SearchTool;
+use Zephyrisle\FlarumZaiBot\Service\Tool\SendStickerTool;
 use Zephyrisle\FlarumZaiBot\Service\Tool\StickerTool;
 use Zephyrisle\FlarumZaiBot\Service\Tool\UserInfoTool;
 use Zephyrisle\FlarumZaiBot\Service\Tool\ViewFileTool;
-use Zephyrisle\FlarumZaiBot\Service\Tool\WebSearchTool;
 
 class GenerateReplyForMessage extends AbstractJob
 {
@@ -25,7 +24,7 @@ class GenerateReplyForMessage extends AbstractJob
         $this->messageId = $messageId;
     }
 
-    public function handle(AIService $ai, SettingsRepositoryInterface $settings, MemoryManager $memory): void
+    public function handle(AIService $ai, SettingsRepositoryInterface $settings): void
     {
         $message = DialogMessage::find($this->messageId);
 
@@ -84,7 +83,6 @@ class GenerateReplyForMessage extends AbstractJob
         ];
 
         if ($author) {
-            $context['user_id'] = $author->id;
             $context['joined_at'] = $author->joined_at ? $author->joined_at->format('Y-m-d H:i:s') : null;
             $context['post_count'] = $author->posts()->count();
             $context['group_names'] = $author->groups->pluck('name_singular')->implode(', ') ?: null;
@@ -104,11 +102,9 @@ class GenerateReplyForMessage extends AbstractJob
                     $context['verified_at'] = $verification->verified_at ? $verification->verified_at->format('Y-m-d H:i:s') : null;
                 }
             }
-
-            $memory->recordEvent($author->id, 'messaged', "发送了私信", 'message', $message->id);
         }
 
-        $tools = [new UserInfoTool(), new SearchTool(), new WebSearchTool(), new ViewFileTool(), new StickerTool(), new LikeTool($botUser->id)];
+        $tools = [new UserInfoTool(), new SearchTool(), new ViewFileTool(), new StickerTool(), new SendStickerTool(), new LikeTool($botUser->id)];
 
         $reply = $ai->generateReply($message->content, $context, $tools);
 
