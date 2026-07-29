@@ -78,7 +78,7 @@ class GenerateReplyForPost extends AbstractJob
         $botPost->discussion_id = $post->discussion_id;
         $botPost->user_id = $botUser->id;
         $botPost->created_at = Carbon::now();
-        $botPost->setParsedContentAttribute($reply);
+        $botPost->setContentAttribute($reply, $botUser);
         $botPost->save();
     }
 }
