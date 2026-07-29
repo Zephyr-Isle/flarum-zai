@@ -28,9 +28,11 @@ return [
         ->default('flarum-zai-bot.timezone', 'Asia/Shanghai')
         ->default('flarum-zai-bot.openweather_city', 'Beijing'),
 
-    (new Extend\Model(\Zephyrisle\FlarumZaiBot\Model\BotAffinity::class)),
+    (new Extend\Model())
+        ->model(\Zephyrisle\FlarumZaiBot\Model\BotAffinity::class),
 
-    (new Extend\Model(\Zephyrisle\FlarumZaiBot\Model\UserPortrait::class)),
+    (new Extend\Model())
+        ->model(\Zephyrisle\FlarumZaiBot\Model\UserPortrait::class),
 
     (new Extend\Routes('api'))
         ->get('/zai-bot/affinities', 'zai-bot.affinities', \Zephyrisle\FlarumZaiBot\Api\Controller\ListAffinitiesController::class),
