@@ -4,10 +4,12 @@ namespace Zephyrisle\FlarumZaiBot\Job;
 
 use Carbon\Carbon;
 use Flarum\Post\CommentPost;
+use Flarum\Post\Event\Posted;
 use Flarum\Post\Post;
 use Flarum\Queue\AbstractJob;
 use Flarum\Settings\SettingsRepositoryInterface;
 use Flarum\User\User;
+use Illuminate\Contracts\Events\Dispatcher;
 use Zephyrisle\FlarumZaiBot\Service\AIService;
 
 class GenerateReplyForPost extends AbstractJob
@@ -19,7 +21,7 @@ class GenerateReplyForPost extends AbstractJob
         $this->postId = $postId;
     }
 
-    public function handle(AIService $ai, SettingsRepositoryInterface $settings): void
+    public function handle(AIService $ai, SettingsRepositoryInterface $settings, Dispatcher $events): void
     {
         $post = Post::find($this->postId);
 
@@ -80,5 +82,7 @@ class GenerateReplyForPost extends AbstractJob
         $botPost->created_at = Carbon::now();
         $botPost->setContentAttribute($reply, $botUser);
         $botPost->save();
+
+        $events->dispatch(new Posted($botPost));
     }
 }
