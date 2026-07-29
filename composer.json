@@ -7,7 +7,8 @@
         "flarum/core": "^2.0"
     },
     "suggest": {
-        "flarum/messages": "Enables AI replies in private messages."
+        "flarum/messages": "Enables AI replies in private messages.",
+        "ramon/verified": "Enables user verification status in AI context and user info tool."
     },
     "authors": [
         {

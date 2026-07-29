@@ -8,6 +8,8 @@ use Flarum\Queue\AbstractJob;
 use Flarum\Settings\SettingsRepositoryInterface;
 use Flarum\User\User;
 use Zephyrisle\FlarumZaiBot\Service\AIService;
+use Zephyrisle\FlarumZaiBot\Service\Tool\SearchTool;
+use Zephyrisle\FlarumZaiBot\Service\Tool\UserInfoTool;
 
 class GenerateReplyForMessage extends AbstractJob
 {
@@ -34,21 +36,7 @@ class GenerateReplyForMessage extends AbstractJob
 
         $botUsername = $settings->get('flarum-zai-bot.username', 'AIGirl');
 
-        $botUser = User::where('username', $botUsername)->first();
-
-        if (!$botUser) {
-            $botUser = new User();
-            $botUser->username = $botUsername;
-            $botUser->email = $botUsername . '@bot.local';
-            $botUser->password = \Illuminate\Support\Str::random(40);
-            $botUser->is_email_confirmed = true;
-            $botUser->save();
-
-            $botUser->groups()->sync([1]);
-        }
-
-        $botUser->last_seen_at = Carbon::now();
-        $botUser->save();
+        $botUser = $this->getBotUser($botUsername);
 
         if ($message->user_id === $botUser->id) {
             return;
@@ -60,7 +48,39 @@ class GenerateReplyForMessage extends AbstractJob
             return;
         }
 
-        $reply = $ai->generateReply($message->content);
+        $author = $message->user;
+        $isVerified = false;
+        if ($author && class_exists(\Ramon\Verified\Models\UserVerification::class)) {
+            $verification = \Ramon\Verified\Models\UserVerification::where('user_id', $author->id)->first();
+            $isVerified = $verification && $verification->is_verified;
+        }
+
+        $history = [];
+        $recentMessages = DialogMessage::where('dialog_id', $dialog->id)
+            ->where('id', '<', $message->id)
+            ->orderBy('id', 'desc')
+            ->take(10)
+            ->get()
+            ->reverse();
+
+        foreach ($recentMessages as $prevMsg) {
+            $prevAuthor = $prevMsg->user;
+            $history[] = [
+                'author' => $prevAuthor ? $prevAuthor->display_name : '未知',
+                'content' => $prevMsg->content,
+            ];
+        }
+
+        $context = [
+            'username' => $author ? $author->username : 'unknown',
+            'display_name' => $author ? $author->display_name : '未知',
+            'is_verified' => $isVerified,
+            'conversation_history' => $history,
+        ];
+
+        $tools = [new UserInfoTool(), new SearchTool()];
+
+        $reply = $ai->generateReply($message->content, $context, $tools);
 
         if (!$reply) {
             return;
@@ -76,5 +96,25 @@ class GenerateReplyForMessage extends AbstractJob
 
         $dialog->setLastMessage($botMessage);
         $dialog->save();
+    }
+
+    protected function getBotUser(string $botUsername): User
+    {
+        $botUser = User::where('username', $botUsername)->first();
+
+        if (!$botUser) {
+            $botUser = new User();
+            $botUser->username = $botUsername;
+            $botUser->email = $botUsername . '@bot.local';
+            $botUser->password = \Illuminate\Support\Str::random(40);
+            $botUser->is_email_confirmed = true;
+            $botUser->save();
+            $botUser->groups()->sync([1]);
+        }
+
+        $botUser->last_seen_at = Carbon::now();
+        $botUser->save();
+
+        return $botUser;
     }
 }
