@@ -5,36 +5,36 @@ export default [
     new Extend.Admin()
         .setting(() => ({
             setting: 'flarum-zai-bot.api_url',
-            label: 'API URL',
+            label: 'zephyrisle-flarum-zai-bot.admin.settings.api_url_label',
             type: 'text',
             default: 'https://api.openai.com/v1',
         }))
         .setting(() => ({
             setting: 'flarum-zai-bot.api_keys',
-            label: 'API Keys (comma-separated, auto-failover)',
+            label: 'zephyrisle-flarum-zai-bot.admin.settings.api_keys_label',
             type: 'text',
             default: '',
         }))
         .setting(() => ({
             setting: 'flarum-zai-bot.api_key',
-            label: 'API Key (fallback if Keys empty)',
+            label: 'zephyrisle-flarum-zai-bot.admin.settings.api_key_label',
             type: 'password',
         }))
         .setting(() => ({
             setting: 'flarum-zai-bot.model',
-            label: 'Model',
+            label: 'zephyrisle-flarum-zai-bot.admin.settings.model_label',
             type: 'text',
             default: 'gpt-3.5-turbo',
         }))
         .setting(() => ({
             setting: 'flarum-zai-bot.username',
-            label: 'Bot Username',
+            label: 'zephyrisle-flarum-zai-bot.admin.settings.username_label',
             type: 'text',
             default: 'AIGirl',
         }))
         .setting(() => ({
             setting: 'flarum-zai-bot.random_reply_chance',
-            label: 'Random Reply Chance (%)',
+            label: 'zephyrisle-flarum-zai-bot.admin.settings.random_reply_chance_label',
             type: 'number',
             default: 0,
             min: 0,
@@ -42,25 +42,25 @@ export default [
         }))
         .setting(() => ({
             setting: 'flarum-zai-bot.message_extension',
-            label: 'Message Extension (reply in active discussions)',
+            label: 'zephyrisle-flarum-zai-bot.admin.settings.message_extension_label',
             type: 'boolean',
             default: false,
         }))
         .setting(() => ({
             setting: 'flarum-zai-bot.system_prompt',
-            label: 'System Prompt',
+            label: 'zephyrisle-flarum-zai-bot.admin.settings.system_prompt_label',
             type: 'textarea',
             default: 'You are a friendly community forum assistant. Keep responses concise and helpful.',
         }))
         .setting(() => ({
             setting: 'flarum-zai-bot.message_reply_enabled',
-            label: 'Enable AI Replies in Messages (requires flarum/messages)',
+            label: 'zephyrisle-flarum-zai-bot.admin.settings.message_reply_enabled_label',
             type: 'boolean',
             default: false,
         }))
         .setting(() => ({
             setting: 'flarum-zai-bot.personality',
-            label: 'Personality',
+            label: 'zephyrisle-flarum-zai-bot.admin.settings.personality_label',
             type: 'select',
             options: {
                 friendly: 'Friendly',
@@ -73,66 +73,66 @@ export default [
         }))
         .setting(() => ({
             setting: 'flarum-zai-bot.bot_display_name',
-            label: 'Bot Display Name',
+            label: 'zephyrisle-flarum-zai-bot.admin.settings.bot_display_name_label',
             type: 'text',
             default: 'Yuki',
         }))
         .setting(() => ({
             setting: 'flarum-zai-bot.timezone',
-            label: 'Timezone',
+            label: 'zephyrisle-flarum-zai-bot.admin.settings.timezone_label',
             type: 'text',
             default: 'Asia/Shanghai',
         }))
         .setting(() => ({
             setting: 'flarum-zai-bot.openweather_key',
-            label: 'OpenWeather API Key',
+            label: 'zephyrisle-flarum-zai-bot.admin.settings.openweather_key_label',
             type: 'password',
         }))
         .setting(() => ({
             setting: 'flarum-zai-bot.openweather_city',
-            label: 'OpenWeather City',
+            label: 'zephyrisle-flarum-zai-bot.admin.settings.openweather_city_label',
             type: 'text',
             default: 'Beijing',
         }))
         .setting(() => ({
             setting: 'flarum-zai-bot.embedding_api_url',
-            label: 'Embedding API URL (leave empty to use main API URL)',
+            label: 'zephyrisle-flarum-zai-bot.admin.settings.embedding_api_url_label',
             type: 'text',
             default: '',
         }))
         .setting(() => ({
             setting: 'flarum-zai-bot.embedding_model',
-            label: 'Embedding Model',
+            label: 'zephyrisle-flarum-zai-bot.admin.settings.embedding_model_label',
             type: 'text',
             default: 'text-embedding-3-small',
         }))
         .setting(() => ({
             setting: 'flarum-zai-bot.pgvector_host',
-            label: 'PostgreSQL Host (for pgvector memory, leave empty to disable)',
+            label: 'zephyrisle-flarum-zai-bot.admin.settings.pgvector_host_label',
             type: 'text',
             default: '',
         }))
         .setting(() => ({
             setting: 'flarum-zai-bot.pgvector_port',
-            label: 'PostgreSQL Port',
+            label: 'zephyrisle-flarum-zai-bot.admin.settings.pgvector_port_label',
             type: 'text',
             default: '5432',
         }))
         .setting(() => ({
             setting: 'flarum-zai-bot.pgvector_db',
-            label: 'PostgreSQL Database',
+            label: 'zephyrisle-flarum-zai-bot.admin.settings.pgvector_db_label',
             type: 'text',
             default: '',
         }))
         .setting(() => ({
             setting: 'flarum-zai-bot.pgvector_user',
-            label: 'PostgreSQL User',
+            label: 'zephyrisle-flarum-zai-bot.admin.settings.pgvector_user_label',
             type: 'text',
             default: '',
         }))
         .setting(() => ({
             setting: 'flarum-zai-bot.pgvector_password',
-            label: 'PostgreSQL Password',
+            label: 'zephyrisle-flarum-zai-bot.admin.settings.pgvector_password_label',
             type: 'password',
         }))
         .page(AffinitiesPage),
