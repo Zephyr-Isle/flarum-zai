@@ -4,35 +4,79 @@ namespace Zephyrisle\FlarumZaiBot\Service;
 
 use Flarum\Settings\SettingsRepositoryInterface;
 use GuzzleHttp\Client;
+use Zephyrisle\FlarumZaiBot\Service\Memory\MemoryManager;
+use Zephyrisle\FlarumZaiBot\Service\Provider\AIProvider;
 use Zephyrisle\FlarumZaiBot\Service\Tool\ToolInterface;
 
 class AIService
 {
-    protected array $personalities = [
-        'friendly' => '你是一个友好热情的社区论坛助手。你乐于助人、耐心细致，回复自然温暖，偶尔使用表情符号让对话更亲切。你总是用中文回复。',
-        'tsundere' => '你是一个傲娇的论坛助手。表面上你说话带刺、显得不耐烦，但实际上你很关心用户。你的语气要表现出"哼"、"才不是"、"笨蛋"等傲娇特征。即使说话不好听，最终还是会给用户提供有用的帮助。你用中文回复。',
-        'loli' => '你是一个可爱的萝莉风格的论坛助手。你说话活泼可爱，带有很多语气词如"啦"、"呀"、"呢"，自称"人家"。你对一切充满好奇，回复欢乐活泼。你用中文回复。',
-        'cool' => '你是一个高冷寡言的论坛助手。你说话简洁直接，不喜欢废话，只说重点。你觉得用户问的问题太简单时会不耐烦，但专业能力很强。你用中文回复，能用三个字说完绝不用五个字。',
-        'custom' => null,
-    ];
+    protected array $cache = [];
 
     public function __construct(
         protected SettingsRepositoryInterface $settings,
-        protected Client $client
+        protected Client $client,
+        protected AIProvider $provider,
+        protected MemoryManager $memory,
+        protected BotAccountManager $accountManager
     ) {}
 
-    public function generateReply(string $prompt, array $context = [], array $tools = []): ?string
-    {
-        $apiUrl = $this->settings->get('flarum-zai-bot.api_url', 'https://api.openai.com/v1');
+    public function generateReply(
+        string $prompt,
+        array $context = [],
+        array $tools = [],
+        ?array $account = null
+    ): ?string {
         $apiKey = $this->settings->get('flarum-zai-bot.api_key');
-        $model = $this->settings->get('flarum-zai-bot.model', 'gpt-3.5-turbo');
+        if (!$apiKey) return null;
 
-        if (!$apiKey) {
+        $account ??= $this->accountManager->getActiveAccount();
+        $tier = $this->provider->decideTier($prompt);
+
+        $cacheKey = $this->getCacheKey($prompt, $context, $account);
+        $cached = $this->getCached($cacheKey);
+        if ($cached !== null) return $cached;
+
+        $messages = $this->buildMessages($prompt, $context, $account);
+
+        $toolDefinitions = $this->buildToolDefinitions($tools);
+        if (!empty($toolDefinitions)) {
+            $messages[] = [
+                'role' => 'system',
+                'content' => '你可以使用以下工具：' . implode('、', array_map(fn ($t) => $t->getName() . '（' . $t->getDescription() . '）', $tools)) . '。当用户需要时主动调用。',
+            ];
+        }
+
+        $result = $this->provider->complete($prompt, $messages, $tier);
+
+        if (!$result || !isset($result['body']['choices'][0])) {
             return null;
         }
 
+        $message = $result['body']['choices'][0]['message'] ?? [];
+
+        if (!empty($message['tool_calls'])) {
+            $messages[] = $message;
+            return $this->handleToolCalls($message['tool_calls'], $messages, $tools, $account);
+        }
+
+        $reply = $message['content'] ?? null;
+
+        if ($reply) {
+            $this->setCached($cacheKey, $reply, $tier);
+        }
+
+        return $reply;
+    }
+
+    protected function buildMessages(string $prompt, array $context, ?array $account): array
+    {
+        $systemPrompt = $account
+            ? $this->accountManager->getPersonalityPrompt($account)
+            : $this->settings->get('flarum-zai-bot.system_prompt', 'You are a friendly community forum assistant.');
+
         $messages = [
-            ['role' => 'system', 'content' => $this->buildSystemPrompt()],
+            ['role' => 'system', 'content' => $systemPrompt],
+            ['role' => 'system', 'content' => '请使用中文回复。'],
         ];
 
         if (!empty($context['current_post_id'])) {
@@ -44,133 +88,58 @@ class AIService
         }
 
         if (!empty($context['username'])) {
-            $userContext = "当前发帖用户信息：\n";
-            $userContext .= "- 用户名：{$context['username']}\n";
-            if (!empty($context['display_name'])) {
-                $userContext .= "- 昵称：{$context['display_name']}\n";
-            }
+            $userCtx = "当前发帖用户：{$context['display_name']}（@{$context['username']}）";
             if (isset($context['is_verified'])) {
-                $userContext .= "- 认证状态：" . ($context['is_verified'] ? '已认证' : '未认证') . "\n";
-            }
-            if (!empty($context['verified_tier'])) {
-                $userContext .= "- 认证等级：{$context['verified_tier']}\n";
-            }
-            if (!empty($context['verified_at'])) {
-                $userContext .= "- 认证时间：{$context['verified_at']}\n";
-            }
-            if (!empty($context['group_names'])) {
-                $userContext .= "- 用户组：{$context['group_names']}\n";
-            }
-            if (!empty($context['post_count'])) {
-                $userContext .= "- 发帖数：{$context['post_count']}\n";
-            }
-            if (!empty($context['joined_at'])) {
-                $userContext .= "- 注册时间：{$context['joined_at']}\n";
+                $userCtx .= "，认证：" . ($context['is_verified'] ? '已认证' : '未认证');
             }
             if (!empty($context['bio'])) {
-                $userContext .= "- 个人简介：{$context['bio']}\n";
+                $userCtx .= "，简介：{$context['bio']}";
             }
-            if (!empty($context['birthday'])) {
-                $userContext .= "- 生日：{$context['birthday']}\n";
-            }
-            $messages[] = ['role' => 'system', 'content' => trim($userContext)];
+            $messages[] = ['role' => 'system', 'content' => $userCtx];
         }
 
-        if (!empty($context['conversation_history']) && is_array($context['conversation_history'])) {
-            $historyStr = "对话历史：\n";
-            foreach ($context['conversation_history'] as $entry) {
-                $postId = $entry['post_id'] ?? '';
-                $author = $entry['author'] ?? '未知';
-                $content = $entry['content'] ?? '';
-                $historyStr .= "- [post {$postId}] {$author}：{$content}\n";
+        $botUserId = $account ? $this->accountManager->getOrCreateBotUser($account['username'])->id : 0;
+        if ($botUserId) {
+            $memoryCtx = $this->memory->buildMemoryContext($botUserId);
+            if ($memoryCtx) {
+                $messages[] = ['role' => 'system', 'content' => "记忆：\n{$memoryCtx}"];
             }
-            $messages[] = ['role' => 'system', 'content' => trim($historyStr)];
+        }
+
+        if (!empty($context['conversation_history'])) {
+            $history = $this->compressHistory($context['conversation_history']);
+            $messages[] = ['role' => 'system', 'content' => "对话历史：\n{$history}"];
         }
 
         $messages[] = ['role' => 'user', 'content' => $prompt];
 
-        $toolDefinitions = [];
-        if (!empty($tools)) {
-            foreach ($tools as $tool) {
-                $toolDefinitions[] = [
-                    'type' => 'function',
-                    'function' => [
-                        'name' => $tool->getName(),
-                        'description' => $tool->getDescription(),
-                        'parameters' => $tool->getParameters(),
-                    ],
-                ];
-            }
-            $messages[] = ['role' => 'system', 'content' => '你可以使用以下工具：get_user_info（查询用户完整资料）、view_user_files（查看用户上传的文件）、search_forum（搜索论坛内容）、get_stickers（查看贴纸）、get_post_likes（查看点赞信息，或使用action:like/unlike进行点赞/取消点赞）。当用户询问详细信息时主动调用对应工具。如果用户要求点赞或取消点赞，使用get_post_likes工具并设置action参数。'];
-        }
-
-        try {
-            $requestBody = [
-                'model' => $model,
-                'messages' => $messages,
-                'max_tokens' => 1500,
-                'temperature' => 0.8,
-            ];
-
-            if (!empty($toolDefinitions)) {
-                $requestBody['tools'] = $toolDefinitions;
-                $requestBody['tool_choice'] = 'auto';
-            }
-
-            $response = $this->client->post(rtrim($apiUrl, '/') . '/chat/completions', [
-                'headers' => [
-                    'Authorization' => 'Bearer ' . $apiKey,
-                    'Content-Type' => 'application/json',
-                ],
-                'json' => $requestBody,
-                'timeout' => 60,
-            ]);
-
-            $body = json_decode($response->getBody(), true);
-            $choice = $body['choices'][0] ?? null;
-
-            if (!$choice) {
-                return null;
-            }
-
-            $message = $choice['message'] ?? [];
-
-            if (!empty($message['tool_calls'])) {
-                $messages[] = $message;
-                return $this->handleToolCalls($message['tool_calls'], $messages, $tools, $apiUrl, $apiKey, $model);
-            }
-
-            return $message['content'] ?? null;
-        } catch (\Exception $e) {
-            return null;
-        }
+        return $messages;
     }
 
-    protected function buildSystemPrompt(): string
+    protected function compressHistory(array $history): string
     {
-        $personality = $this->settings->get('flarum-zai-bot.personality', 'friendly');
+        $lines = [];
+        $totalLen = 0;
+        $maxLen = 1500;
 
-        if ($personality === 'custom') {
-            return $this->settings->get('flarum-zai-bot.system_prompt', 'You are a friendly community forum assistant. Keep responses concise and helpful.');
+        foreach (array_slice($history, -8) as $entry) {
+            $line = "- [{$entry['post_id']}] {$entry['author']}：{$entry['content']}";
+            $len = mb_strlen($line);
+            if ($totalLen + $len > $maxLen) {
+                $line = "- [{$entry['post_id']}] {$entry['author']}：" . mb_substr($entry['content'], 0, 100) . '…';
+            }
+            $lines[] = $line;
+            $totalLen += mb_strlen(end($lines));
         }
 
-        $prompt = $this->personalities[$personality] ?? $this->personalities['friendly'];
-
-        $prompt .= "\n\n你是一个论坛AI助手，名称是" . $this->settings->get('flarum-zai-bot.bot_display_name', 'Yuki') . "。";
-
-        return $prompt;
+        return implode("\n", $lines);
     }
 
-    protected function handleToolCalls(array $toolCalls, array $messages, array $tools, string $apiUrl, string $apiKey, string $model): ?string
+    protected function buildToolDefinitions(array $tools): array
     {
-        $toolMap = [];
+        $defs = [];
         foreach ($tools as $tool) {
-            $toolMap[$tool->getName()] = $tool;
-        }
-
-        $toolDefinitions = [];
-        foreach ($tools as $tool) {
-            $toolDefinitions[] = [
+            $defs[] = [
                 'type' => 'function',
                 'function' => [
                     'name' => $tool->getName(),
@@ -179,66 +148,88 @@ class AIService
                 ],
             ];
         }
+        return $defs;
+    }
+
+    protected function getCacheKey(string $prompt, array $context, ?array $account): string
+    {
+        $key = $prompt;
+        if (!empty($context['current_post_id'])) {
+            $key .= '_post' . $context['current_post_id'];
+        }
+        return 'zai_' . md5($key . ($account['username'] ?? ''));
+    }
+
+    protected function getCached(string $key): ?string
+    {
+        if (isset($this->cache[$key])) {
+            return $this->cache[$key];
+        }
+
+        if (class_exists(\Flarum\Cache\CacheManager::class)) {
+            try {
+                $cache = resolve(\Flarum\Cache\CacheManager::class);
+                return $cache->get($key);
+            } catch (\Exception $e) {}
+        }
+
+        return null;
+    }
+
+    protected function setCached(string $key, string $value, string $tier): void
+    {
+        $this->cache[$key] = $value;
+
+        $ttl = $tier === 'smart' ? 300 : 60;
+
+        if (class_exists(\Flarum\Cache\CacheManager::class)) {
+            try {
+                $cache = resolve(\Flarum\Cache\CacheManager::class);
+                $cache->put($key, $value, $ttl);
+            } catch (\Exception $e) {}
+        }
+    }
+
+    protected function handleToolCalls(array $toolCalls, array $messages, array $tools, ?array $account): ?string
+    {
+        $toolMap = [];
+        foreach ($tools as $tool) {
+            $toolMap[$tool->getName()] = $tool;
+        }
 
         foreach ($toolCalls as $tc) {
-            $functionName = $tc['function']['name'] ?? '';
-            $arguments = json_decode($tc['function']['arguments'] ?? '{}', true);
+            $name = $tc['function']['name'] ?? '';
+            $args = json_decode($tc['function']['arguments'] ?? '{}', true) ?: [];
 
             $result = '工具调用失败';
-            if (isset($toolMap[$functionName])) {
+            if (isset($toolMap[$name])) {
                 try {
-                    $result = $toolMap[$functionName]->execute($arguments ?: []);
+                    $result = $toolMap[$name]->execute($args);
                 } catch (\Exception $e) {
-                    $result = '工具执行出错：' . $e->getMessage();
+                    $result = '工具出错：' . $e->getMessage();
                 }
             }
 
-            $messages[] = [
-                'role' => 'tool',
-                'tool_call_id' => $tc['id'],
-                'content' => $result,
-            ];
+            $botUserId = $account ? $this->accountManager->getOrCreateBotUser($account['username'])->id : 0;
+            if ($botUserId) {
+                $this->memory->rememberInteraction($botUserId, "调用工具 {$name} 查询「{$args['query'] ?? $args['keyword'] ?? $args['post_id'] ?? ''}」");
+            }
+
+            $messages[] = ['role' => 'tool', 'tool_call_id' => $tc['id'], 'content' => $result];
         }
 
-        try {
-            $requestBody = [
-                'model' => $model,
-                'messages' => $messages,
-                'max_tokens' => 1500,
-                'temperature' => 0.8,
-            ];
+        $tier = $this->provider->decideTier('工具结果处理');
+        $result = $this->provider->complete('工具结果处理', $messages, $tier);
 
-            if (!empty($toolDefinitions)) {
-                $requestBody['tools'] = $toolDefinitions;
-                $requestBody['tool_choice'] = 'auto';
-            }
+        if (!$result || !isset($result['body']['choices'][0])) return null;
 
-            $response = $this->client->post(rtrim($apiUrl, '/') . '/chat/completions', [
-                'headers' => [
-                    'Authorization' => 'Bearer ' . $apiKey,
-                    'Content-Type' => 'application/json',
-                ],
-                'json' => $requestBody,
-                'timeout' => 60,
-            ]);
+        $msg = $result['body']['choices'][0]['message'] ?? [];
 
-            $body = json_decode($response->getBody(), true);
-            $choice = $body['choices'][0] ?? null;
-
-            if (!$choice) {
-                return null;
-            }
-
-            $message = $choice['message'] ?? [];
-
-            if (!empty($message['tool_calls'])) {
-                $messages[] = $message;
-                return $this->handleToolCalls($message['tool_calls'], $messages, $tools, $apiUrl, $apiKey, $model);
-            }
-
-            return $message['content'] ?? null;
-        } catch (\Exception $e) {
-            return null;
+        if (!empty($msg['tool_calls'])) {
+            $messages[] = $msg;
+            return $this->handleToolCalls($msg['tool_calls'], $messages, $tools, $account);
         }
+
+        return $msg['content'] ?? null;
     }
 }

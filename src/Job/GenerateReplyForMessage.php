@@ -8,11 +8,14 @@ use Flarum\Queue\AbstractJob;
 use Flarum\Settings\SettingsRepositoryInterface;
 use Flarum\User\User;
 use Zephyrisle\FlarumZaiBot\Service\AIService;
+use Zephyrisle\FlarumZaiBot\Service\BotAccountManager;
+use Zephyrisle\FlarumZaiBot\Service\Memory\MemoryManager;
 use Zephyrisle\FlarumZaiBot\Service\Tool\LikeTool;
 use Zephyrisle\FlarumZaiBot\Service\Tool\SearchTool;
 use Zephyrisle\FlarumZaiBot\Service\Tool\StickerTool;
 use Zephyrisle\FlarumZaiBot\Service\Tool\UserInfoTool;
 use Zephyrisle\FlarumZaiBot\Service\Tool\ViewFileTool;
+use Zephyrisle\FlarumZaiBot\Service\Tool\WebSearchTool;
 
 class GenerateReplyForMessage extends AbstractJob
 {
@@ -23,39 +26,33 @@ class GenerateReplyForMessage extends AbstractJob
         $this->messageId = $messageId;
     }
 
-    public function handle(AIService $ai, SettingsRepositoryInterface $settings): void
-    {
+    public function handle(
+        AIService $ai,
+        SettingsRepositoryInterface $settings,
+        BotAccountManager $accountManager,
+        MemoryManager $memory
+    ): void {
         $message = DialogMessage::find($this->messageId);
-
-        if (!$message || !$message->dialog) {
-            return;
-        }
+        if (!$message || !$message->dialog) return;
 
         $dialog = $message->dialog;
 
-        if (!(bool) $settings->get('flarum-zai-bot.message_reply_enabled', false)) {
-            return;
-        }
+        if (!(bool) $settings->get('flarum-zai-bot.message_reply_enabled', false)) return;
 
-        $botUsername = $settings->get('flarum-zai-bot.username', 'AIGirl');
+        $account = $accountManager->getActiveAccount();
+        if (!$account) return;
 
-        $botUser = $this->getBotUser($botUsername);
+        $botUser = $accountManager->getOrCreateBotUser($account['username']);
 
-        if ($message->user_id === $botUser->id) {
-            return;
-        }
+        if ($message->user_id === $botUser->id) return;
 
         $dialogUserIds = $dialog->users()->pluck('user_id')->toArray();
-
-        if (!in_array($botUser->id, $dialogUserIds, true)) {
-            return;
-        }
+        if (!in_array($botUser->id, $dialogUserIds, true)) return;
 
         $author = $message->user;
         $isVerified = false;
         if ($author && class_exists(\Ramon\Verified\TierResolver::class)) {
-            $resolver = resolve(\Ramon\Verified\TierResolver::class);
-            $isVerified = $resolver->isVerified($author);
+            $isVerified = resolve(\Ramon\Verified\TierResolver::class)->isVerified($author);
         }
 
         $history = [];
@@ -75,41 +72,43 @@ class GenerateReplyForMessage extends AbstractJob
         }
 
         $context = [
-            'username' => $author ? $author->username : 'unknown',
-            'display_name' => $author ? $author->display_name : '未知',
+            'username' => $author ? $author->username : '',
+            'display_name' => $author ? $author->display_name : '',
             'is_verified' => $isVerified,
             'conversation_history' => $history,
         ];
 
         if ($author) {
-            $context['joined_at'] = $author->joined_at ? $author->joined_at->format('Y-m-d H:i:s') : null;
+            $context['joined_at'] = $author->joined_at?->format('Y-m-d H:i:s');
             $context['post_count'] = $author->posts()->count();
             $context['group_names'] = $author->groups->pluck('name_singular')->implode(', ') ?: null;
-
             if (class_exists(\FoF\UserBio\Event\BioChanged::class) && $author->bio) {
                 $context['bio'] = strip_tags($author->bio);
             }
-
-            if (class_exists(\Datlechin\Birthdays\AddBirthdayValidation::class) && $author->birthday) {
-                $context['birthday'] = $author->birthday;
-            }
-
             if (class_exists(\Ramon\Verified\Models\UserVerification::class)) {
-                $verification = \Ramon\Verified\Models\UserVerification::where('user_id', $author->id)->first();
-                if ($verification) {
-                    $context['verified_tier'] = $verification->verified_tier;
-                    $context['verified_at'] = $verification->verified_at ? $verification->verified_at->format('Y-m-d H:i:s') : null;
+                $v = \Ramon\Verified\Models\UserVerification::where('user_id', $author->id)->first();
+                if ($v) {
+                    $context['verified_tier'] = $v->verified_tier;
+                    $context['verified_at'] = $v->verified_at?->format('Y-m-d H:i:s');
                 }
             }
         }
 
-        $tools = [new UserInfoTool(), new SearchTool(), new ViewFileTool(), new StickerTool(), new LikeTool($botUser->id)];
+        $memory->rememberUser($botUser->id, $author, ['last_interaction' => '私信']);
+        $memory->rememberInteraction($botUser->id, "与 {$author->display_name} 私信对话");
 
-        $reply = $ai->generateReply($message->content, $context, $tools);
+        $tools = [
+            new UserInfoTool(),
+            new SearchTool(),
+            new ViewFileTool(),
+            new StickerTool(),
+            new LikeTool($botUser->id),
+            new WebSearchTool(),
+        ];
 
-        if (!$reply) {
-            return;
-        }
+        $reply = $ai->generateReply($message->content, $context, $tools, $account);
+
+        if (!$reply) return;
 
         $botMessage = new DialogMessage();
         $botMessage->dialog_id = $dialog->id;
@@ -118,28 +117,7 @@ class GenerateReplyForMessage extends AbstractJob
         $botMessage->save();
 
         $botMessage->refresh();
-
         $dialog->setLastMessage($botMessage);
         $dialog->save();
-    }
-
-    protected function getBotUser(string $botUsername): User
-    {
-        $botUser = User::where('username', $botUsername)->first();
-
-        if (!$botUser) {
-            $botUser = new User();
-            $botUser->username = $botUsername;
-            $botUser->email = $botUsername . '@bot.local';
-            $botUser->password = \Illuminate\Support\Str::random(40);
-            $botUser->is_email_confirmed = true;
-            $botUser->save();
-            $botUser->groups()->sync([1]);
-        }
-
-        $botUser->last_seen_at = Carbon::now();
-        $botUser->save();
-
-        return $botUser;
     }
 }

@@ -1,8 +1,13 @@
 <?php
 
 use Flarum\Extend;
+use Zephyrisle\FlarumZaiBot\Console\PurgeMemoryCommand;
+use Zephyrisle\FlarumZaiBot\Listener\AutoEngage;
 use Zephyrisle\FlarumZaiBot\Listener\ReplyToMessage;
 use Zephyrisle\FlarumZaiBot\Listener\ReplyToPost;
+use Zephyrisle\FlarumZaiBot\Service\BotAccountManager;
+use Zephyrisle\FlarumZaiBot\Service\Memory\MemoryManager;
+use Zephyrisle\FlarumZaiBot\Service\Provider\AIProvider;
 
 return [
     (new Extend\Frontend('forum'))
@@ -24,5 +29,22 @@ return [
 
     (new Extend\Settings())
         ->default('flarum-zai-bot.personality', 'friendly')
-        ->default('flarum-zai-bot.bot_display_name', 'Yuki'),
+        ->default('flarum-zai-bot.bot_display_name', 'Yuki')
+        ->default('flarum-zai-bot.auto_engage', false)
+        ->default('flarum-zai-bot.auto_engage_chance', 20)
+        ->default('flarum-zai-bot.cheap_model', 'gpt-3.5-turbo')
+        ->default('flarum-zai-bot.smart_model', 'gpt-4o'),
+
+    (new Extend\Console())
+        ->command(PurgeMemoryCommand::class)
+        ->schedule(PurgeMemoryCommand::class, function (\Illuminate\Console\Scheduling\Event $event) {
+            $event->daily();
+        }),
+
+    (new Extend\ServiceProvider())
+        ->register(function ($app) {
+            $app->singleton(AIProvider::class);
+            $app->singleton(MemoryManager::class);
+            $app->singleton(BotAccountManager::class);
+        }),
 ];
