@@ -79,12 +79,14 @@ class GenerateReplyForPost extends AbstractJob
         foreach ($recentPosts as $prevPost) {
             $prevAuthor = $prevPost->user;
             $history[] = [
+                'post_id' => $prevPost->id,
                 'author' => $prevAuthor ? $prevAuthor->display_name : '未知',
                 'content' => strip_tags($prevPost->content),
             ];
         }
 
         $context = [
+            'current_post_id' => $post->id,
             'discussion_title' => $discussion->title ?? 'Untitled',
             'username' => $author ? $author->username : 'unknown',
             'display_name' => $author ? $author->display_name : '未知',

@@ -35,6 +35,10 @@ class AIService
             ['role' => 'system', 'content' => $this->buildSystemPrompt()],
         ];
 
+        if (!empty($context['current_post_id'])) {
+            $messages[] = ['role' => 'system', 'content' => "当前帖子ID：{$context['current_post_id']}"];
+        }
+
         if (!empty($context['discussion_title'])) {
             $messages[] = ['role' => 'system', 'content' => "当前讨论主题：{$context['discussion_title']}"];
         }
@@ -75,9 +79,10 @@ class AIService
         if (!empty($context['conversation_history']) && is_array($context['conversation_history'])) {
             $historyStr = "对话历史：\n";
             foreach ($context['conversation_history'] as $entry) {
+                $postId = $entry['post_id'] ?? '';
                 $author = $entry['author'] ?? '未知';
                 $content = $entry['content'] ?? '';
-                $historyStr .= "- {$author}：{$content}\n";
+                $historyStr .= "- [post {$postId}] {$author}：{$content}\n";
             }
             $messages[] = ['role' => 'system', 'content' => trim($historyStr)];
         }
