@@ -11,8 +11,11 @@ use Flarum\Settings\SettingsRepositoryInterface;
 use Flarum\User\User;
 use Illuminate\Contracts\Events\Dispatcher;
 use Zephyrisle\FlarumZaiBot\Service\AIService;
+use Zephyrisle\FlarumZaiBot\Service\Tool\LikeTool;
 use Zephyrisle\FlarumZaiBot\Service\Tool\SearchTool;
+use Zephyrisle\FlarumZaiBot\Service\Tool\StickerTool;
 use Zephyrisle\FlarumZaiBot\Service\Tool\UserInfoTool;
+use Zephyrisle\FlarumZaiBot\Service\Tool\ViewFileTool;
 
 class GenerateReplyForPost extends AbstractJob
 {
@@ -94,6 +97,14 @@ class GenerateReplyForPost extends AbstractJob
             $context['post_count'] = $author->posts()->count();
             $context['group_names'] = $author->groups->pluck('name_singular')->implode(', ') ?: null;
 
+            if (class_exists(\FoF\UserBio\Event\BioChanged::class) && $author->bio) {
+                $context['bio'] = strip_tags($author->bio);
+            }
+
+            if (class_exists(\Datlechin\Birthdays\AddBirthdayValidation::class) && $author->birthday) {
+                $context['birthday'] = $author->birthday;
+            }
+
             if (class_exists(\Ramon\Verified\Models\UserVerification::class)) {
                 $verification = \Ramon\Verified\Models\UserVerification::where('user_id', $author->id)->first();
                 if ($verification) {
@@ -103,7 +114,7 @@ class GenerateReplyForPost extends AbstractJob
             }
         }
 
-        $tools = [new UserInfoTool(), new SearchTool()];
+        $tools = [new UserInfoTool(), new SearchTool(), new ViewFileTool(), new StickerTool(), new LikeTool()];
 
         $reply = $ai->generateReply($content, $context, $tools);
 

@@ -8,6 +8,14 @@ use Zephyrisle\FlarumZaiBot\Service\Tool\ToolInterface;
 
 class AIService
 {
+    protected array $personalities = [
+        'friendly' => '你是一个友好热情的社区论坛助手。你乐于助人、耐心细致，回复自然温暖，偶尔使用表情符号让对话更亲切。你总是用中文回复。',
+        'tsundere' => '你是一个傲娇的论坛助手。表面上你说话带刺、显得不耐烦，但实际上你很关心用户。你的语气要表现出"哼"、"才不是"、"笨蛋"等傲娇特征。即使说话不好听，最终还是会给用户提供有用的帮助。你用中文回复。',
+        'loli' => '你是一个可爱的萝莉风格的论坛助手。你说话活泼可爱，带有很多语气词如"啦"、"呀"、"呢"，自称"人家"。你对一切充满好奇，回复欢乐活泼。你用中文回复。',
+        'cool' => '你是一个高冷寡言的论坛助手。你说话简洁直接，不喜欢废话，只说重点。你觉得用户问的问题太简单时会不耐烦，但专业能力很强。你用中文回复，能用三个字说完绝不用五个字。',
+        'custom' => null,
+    ];
+
     public function __construct(
         protected SettingsRepositoryInterface $settings,
         protected Client $client
@@ -18,15 +26,13 @@ class AIService
         $apiUrl = $this->settings->get('flarum-zai-bot.api_url', 'https://api.openai.com/v1');
         $apiKey = $this->settings->get('flarum-zai-bot.api_key');
         $model = $this->settings->get('flarum-zai-bot.model', 'gpt-3.5-turbo');
-        $systemPrompt = $this->settings->get('flarum-zai-bot.system_prompt', 'You are a friendly community forum assistant. Keep responses concise and helpful.');
 
         if (!$apiKey) {
             return null;
         }
 
         $messages = [
-            ['role' => 'system', 'content' => $systemPrompt],
-            ['role' => 'system', 'content' => '请使用中文回复。'],
+            ['role' => 'system', 'content' => $this->buildSystemPrompt()],
         ];
 
         if (!empty($context['discussion_title'])) {
@@ -57,6 +63,12 @@ class AIService
             if (!empty($context['joined_at'])) {
                 $userContext .= "- 注册时间：{$context['joined_at']}\n";
             }
+            if (!empty($context['bio'])) {
+                $userContext .= "- 个人简介：{$context['bio']}\n";
+            }
+            if (!empty($context['birthday'])) {
+                $userContext .= "- 生日：{$context['birthday']}\n";
+            }
             $messages[] = ['role' => 'system', 'content' => trim($userContext)];
         }
 
@@ -84,15 +96,15 @@ class AIService
                     ],
                 ];
             }
-            $messages[] = ['role' => 'system', 'content' => '你拥有工具可以使用。当用户询问详细信息（如用户资料、搜索结果）时，请主动调用对应工具获取最新数据，不要仅凭已提供的信息做有限回复。'];
+            $messages[] = ['role' => 'system', 'content' => '你可以使用以下工具获取更多信息：get_user_info（查询用户资料）、view_user_files（查看用户上传的文件）、search_forum（搜索论坛内容）、get_stickers（查看贴纸）、get_post_likes（查看点赞信息）。当用户询问详细信息时，请主动调用对应工具获取最新数据。如果工具返回的信息不足，你可以继续追问或调用其他工具。'];
         }
 
         try {
             $requestBody = [
                 'model' => $model,
                 'messages' => $messages,
-                'max_tokens' => 1000,
-                'temperature' => 0.7,
+                'max_tokens' => 1500,
+                'temperature' => 0.8,
             ];
 
             if (!empty($toolDefinitions)) {
@@ -127,6 +139,21 @@ class AIService
         } catch (\Exception $e) {
             return null;
         }
+    }
+
+    protected function buildSystemPrompt(): string
+    {
+        $personality = $this->settings->get('flarum-zai-bot.personality', 'friendly');
+
+        if ($personality === 'custom') {
+            return $this->settings->get('flarum-zai-bot.system_prompt', 'You are a friendly community forum assistant. Keep responses concise and helpful.');
+        }
+
+        $prompt = $this->personalities[$personality] ?? $this->personalities['friendly'];
+
+        $prompt .= "\n\n你是一个论坛AI助手，名称是" . $this->settings->get('flarum-zai-bot.bot_display_name', 'Yuki') . "。";
+
+        return $prompt;
     }
 
     protected function handleToolCalls(array $toolCalls, array $messages, array $tools, string $apiUrl, string $apiKey, string $model): ?string
@@ -172,8 +199,8 @@ class AIService
             $requestBody = [
                 'model' => $model,
                 'messages' => $messages,
-                'max_tokens' => 1000,
-                'temperature' => 0.7,
+                'max_tokens' => 1500,
+                'temperature' => 0.8,
             ];
 
             if (!empty($toolDefinitions)) {

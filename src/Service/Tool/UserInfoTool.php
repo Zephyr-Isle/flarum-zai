@@ -13,7 +13,7 @@ class UserInfoTool implements ToolInterface
 
     public function getDescription(): string
     {
-        return '查询用户的注册信息，包括昵称、用户名、注册时间、发帖数、用户组、以及认证状态（如果已安装认证插件）。参数可以是用户名或用户ID。';
+        return '查询用户的完整资料，包括昵称、用户名、注册时间、最后活跃、发帖数、用户组、个人简介、生日、头像、背景图、以及认证状态。参数可以是用户名或用户ID。';
     }
 
     public function getParameters(): array
@@ -54,6 +54,25 @@ class UserInfoTool implements ToolInterface
             '讨论数' => $user->discussions()->count(),
             '用户组' => $user->groups->pluck('name_singular')->implode(', ') ?: '无',
         ];
+
+        if ($user->avatar_url) {
+            $info['头像'] = $user->avatar_url;
+        }
+
+        if (class_exists(\FoF\UserBio\Event\BioChanged::class) && $user->bio) {
+            $info['个人简介'] = strip_tags($user->bio);
+        }
+
+        if (class_exists(\Datlechin\Birthdays\AddBirthdayValidation::class) && $user->birthday) {
+            $info['生日'] = $user->birthday;
+            if ($user->showDobYear) {
+                $info['显示出生年份'] = '是';
+            }
+        }
+
+        if ($user->cover) {
+            $info['背景图'] = $user->cover;
+        }
 
         if (class_exists(\Ramon\Verified\TierResolver::class)) {
             $resolver = resolve(\Ramon\Verified\TierResolver::class);

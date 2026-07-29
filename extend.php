@@ -21,4 +21,8 @@ return [
             (new Extend\Event())
                 ->listen(\Flarum\Messages\DialogMessage\Event\Created::class, ReplyToMessage::class),
         ]),
+
+    (new Extend\Settings())
+        ->default('flarum-zai-bot.personality', 'friendly')
+        ->default('flarum-zai-bot.bot_display_name', 'Yuki'),
 ];
