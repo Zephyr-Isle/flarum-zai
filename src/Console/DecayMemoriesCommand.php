@@ -19,9 +19,10 @@ class DecayMemoriesCommand extends AbstractCommand
             ->setDescription('Decay old memories and prune low-importance interaction events.');
     }
 
-    protected function fire(): void
+    protected function fire(): int
     {
-        $count = $this->memory->decayMemories();
-        $this->info("Decayed/pruned {$count} memory and event records.");
+        $this->memory->decayMemories();
+        $this->info('Memory decay complete.');
+        return 0;
     }
 }
