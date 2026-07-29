@@ -23,12 +23,9 @@ return [
         ]),
 
     (new Extend\Settings())
-        ->default('flarum-zai-bot.personality', 'friendly')
         ->default('flarum-zai-bot.bot_display_name', 'Yuki')
         ->default('flarum-zai-bot.auto_engage', false)
-        ->default('flarum-zai-bot.auto_engage_chance', 20)
-        ->default('flarum-zai-bot.cheap_model', 'gpt-3.5-turbo')
-        ->default('flarum-zai-bot.smart_model', 'gpt-4o'),
+        ->default('flarum-zai-bot.auto_engage_chance', 20),
 
     (new Extend\Console())
         ->command(PurgeMemoryCommand::class)
