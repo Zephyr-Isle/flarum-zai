@@ -96,7 +96,7 @@ class AIService
                     ],
                 ];
             }
-            $messages[] = ['role' => 'system', 'content' => '你可以使用以下工具获取更多信息：get_user_info（查询用户资料）、view_user_files（查看用户上传的文件）、search_forum（搜索论坛内容）、get_stickers（查看贴纸）、get_post_likes（查看点赞信息）。当用户询问详细信息时，请主动调用对应工具获取最新数据。如果工具返回的信息不足，你可以继续追问或调用其他工具。'];
+            $messages[] = ['role' => 'system', 'content' => '你可以使用以下工具：get_user_info（查询用户完整资料）、view_user_files（查看用户上传的文件）、search_forum（搜索论坛内容）、get_stickers（查看贴纸）、get_post_likes（查看点赞信息，或使用action:like/unlike进行点赞/取消点赞）。当用户询问详细信息时主动调用对应工具。如果用户要求点赞或取消点赞，使用get_post_likes工具并设置action参数。'];
         }
 
         try {

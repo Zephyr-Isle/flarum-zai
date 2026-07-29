@@ -103,7 +103,7 @@ class GenerateReplyForMessage extends AbstractJob
             }
         }
 
-        $tools = [new UserInfoTool(), new SearchTool(), new ViewFileTool(), new StickerTool(), new LikeTool()];
+        $tools = [new UserInfoTool(), new SearchTool(), new ViewFileTool(), new StickerTool(), new LikeTool($botUser->id)];
 
         $reply = $ai->generateReply($message->content, $context, $tools);
 
