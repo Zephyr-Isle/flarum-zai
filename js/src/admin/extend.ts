@@ -135,8 +135,5 @@ export default [
             label: 'PostgreSQL Password',
             type: 'password',
         }))
-        .page(() => ({
-            title: 'Bot Affinities',
-            component: AffinitiesPage,
-        })),
+        .page(AffinitiesPage),
 ];
