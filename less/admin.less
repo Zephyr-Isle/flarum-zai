@@ -1,7 +1,82 @@
-.FlarumZai-admin {
-    padding: 20px;
+.ZaiBot-affinities {
+    .affinity-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+    }
 
-    h2 {
-        margin-bottom: 15px;
+    .affinity-summary {
+        color: #7c7c7c;
+        font-size: 13px;
+        margin-bottom: 20px;
+    }
+
+    .affinity-table-wrap {
+        background: #fff;
+        border-radius: 8px;
+        box-shadow: 0 1px 3px rgba(0,0,0,.08);
+        overflow: hidden;
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+
+        th {
+            background: #f6f9fc;
+            font-size: 11px;
+            font-weight: 700;
+            color: #667c99;
+            padding: 10px 14px;
+            text-align: left;
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            border-bottom: 2px solid #e6ecf2;
+        }
+
+        td {
+            padding: 10px 14px;
+            font-size: 13px;
+            border-bottom: 1px solid #f0f4f8;
+            color: #333;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        tr:hover td {
+            background: #f8fafc;
+        }
+    }
+
+    .affinity-score {
+        font-weight: 700;
+
+        &.high { color: #2e7d32; }
+        &.medium { color: #f57c00; }
+        &.low { color: #c62828; }
+    }
+
+    .affinity-empty {
+        text-align: center;
+        padding: 40px 20px;
+        color: #999;
+        font-size: 14px;
+    }
+
+    .affinity-loading {
+        text-align: center;
+        padding: 40px 20px;
+    }
+
+    .affinity-user {
+        font-weight: 600;
+        small { color: #999; font-weight: 400; }
+    }
+
+    .Button--refresh {
+        margin-bottom: 16px;
     }
 }
