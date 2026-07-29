@@ -3,122 +3,158 @@
 namespace Zephyrisle\FlarumZaiBot\Service\Memory;
 
 use Carbon\Carbon;
-use Flarum\Database\AbstractModel;
 use Flarum\User\User;
-
-class BotMemory extends AbstractModel
-{
-    protected $table = 'zai_bot_memory';
-
-    public $timestamps = false;
-
-    protected $casts = [
-        'data' => 'array',
-        'created_at' => 'datetime',
-        'expires_at' => 'datetime',
-    ];
-}
 
 class MemoryManager
 {
-    const int DEFAULT_TTL_DAYS = 90;
-
-    public function remember(int $botUserId, string $type, string $key, mixed $value, int $ttlDays = self::DEFAULT_TTL_DAYS): void
+    public function remember(int $userId, string $key, string $value, float $importance = 0.5): UserMemory
     {
-        BotMemory::updateOrCreate(
-            ['bot_user_id' => $botUserId, 'type' => $type, 'key' => $key],
-            [
-                'data' => ['value' => $value],
-                'created_at' => Carbon::now(),
-                'expires_at' => Carbon::now()->addDays($ttlDays),
-            ]
-        );
-    }
+        $memory = UserMemory::firstOrNew([
+            'user_id' => $userId,
+            'key' => $key,
+        ]);
 
-    public function recall(int $botUserId, string $type, ?string $key = null): array
-    {
-        $query = BotMemory::where('bot_user_id', $botUserId)
-            ->where('type', $type)
-            ->where(function ($q) {
-                $q->whereNull('expires_at')->orWhere('expires_at', '>', Carbon::now());
-            });
+        $memory->value = $value;
+        $memory->importance = $importance;
+        $memory->last_accessed_at = Carbon::now();
 
-        if ($key !== null) {
-            $query->where('key', $key);
+        if (!$memory->exists) {
+            $memory->created_at = Carbon::now();
         }
 
-        return $query->get()->keyBy('key')->map(fn ($m) => $m->data['value'] ?? null)->toArray();
+        $memory->save();
+
+        return $memory;
     }
 
-    public function rememberUser(int $botUserId, User $user, array $traits = []): void
+    public function recall(int $userId, string $key): ?UserMemory
     {
-        $profile = $this->recall($botUserId, 'user_profile', (string) $user->id);
-        $profile = array_merge($profile, $traits, [
-            'username' => $user->username,
-            'display_name' => $user->display_name,
-            'last_seen' => Carbon::now()->toDateTimeString(),
-            'interaction_count' => ($profile['interaction_count'] ?? 0) + 1,
-        ]);
-        $this->remember($botUserId, 'user_profile', (string) $user->id, $profile, 365);
+        $memory = UserMemory::where('user_id', $userId)
+            ->where('key', $key)
+            ->first();
+
+        if ($memory) {
+            $memory->last_accessed_at = Carbon::now();
+            $memory->save();
+        }
+
+        return $memory;
     }
 
-    public function getUserProfile(int $botUserId, int $userId): ?array
+    public function recallAll(int $userId): array
     {
-        $data = $this->recall($botUserId, 'user_profile', (string) $userId);
-        return $data ?: null;
+        $memories = UserMemory::where('user_id', $userId)
+            ->orderBy('importance', 'desc')
+            ->orderBy('last_accessed_at', 'desc')
+            ->take(20)
+            ->get();
+
+        return $memories->all();
     }
 
-    public function rememberInteraction(int $botUserId, string $summary): void
+    public function buildUserProfile(int $userId): string
     {
-        $events = $this->recall($botUserId, 'key_events', 'recent') ?: [];
-        $events[] = ['time' => Carbon::now()->toDateTimeString(), 'summary' => $summary];
-        $events = array_slice($events, -50);
-        $this->remember($botUserId, 'key_events', 'recent', $events, 30);
+        $user = User::find($userId);
+        if (!$user) return '';
+
+        $lines = [];
+        $lines[] = "用户：{$user->display_name}（@{$user->username}）";
+
+        $memories = $this->recallAll($userId);
+        foreach ($memories as $m) {
+            $lines[] = "- {$m->key}：{$m->value}";
+        }
+
+        return implode("\n", $lines);
     }
 
-    public function getRecentInteractions(int $botUserId): array
+    public function recordEvent(int $userId, string $type, string $summary, ?string $refType = null, ?int $refId = null, float $importance = 0.3): InteractionEvent
     {
-        return $this->recall($botUserId, 'key_events', 'recent') ?: [];
+        $event = new InteractionEvent();
+        $event->user_id = $userId;
+        $event->type = $type;
+        $event->summary = $summary;
+        $event->reference_type = $refType;
+        $event->reference_id = $refId;
+        $event->importance = $importance;
+        $event->created_at = Carbon::now();
+        $event->save();
+
+        $this->updateImportanceFromEvents($userId);
+
+        return $event;
     }
 
-    public function forget(int $botUserId, string $type, ?string $key = null): void
+    public function getRecentEvents(int $userId, int $limit = 10): array
     {
-        $query = BotMemory::where('bot_user_id', $botUserId)->where('type', $type);
-        if ($key !== null) $query->where('key', $key);
+        return InteractionEvent::where('user_id', $userId)
+            ->orderBy('created_at', 'desc')
+            ->take($limit)
+            ->get()
+            ->all();
+    }
+
+    public function summarizeEvents(int $userId): string
+    {
+        $events = $this->getRecentEvents($userId, 15);
+        if (empty($events)) return '';
+
+        $parts = [];
+        foreach ($events as $e) {
+            $time = $e->created_at ? $e->created_at->diffForHumans() : '不久前';
+            $parts[] = "[{$time}] {$e->type}：{$e->summary}";
+        }
+
+        return "与用户的近期互动：\n" . implode("\n", $parts);
+    }
+
+    protected function updateImportanceFromEvents(int $userId): void
+    {
+        $freq = InteractionEvent::where('user_id', $userId)
+            ->where('created_at', '>=', Carbon::now()->subDays(7))
+            ->count();
+
+        $memories = UserMemory::where('user_id', $userId)->get();
+        foreach ($memories as $m) {
+            $boost = min($freq / 10, 2.0);
+            $newImportance = min($m->importance + $boost * 0.1, 5.0);
+            $m->importance = $newImportance;
+            $m->save();
+        }
+    }
+
+    public function forget(int $userId, string $key = null): void
+    {
+        $query = UserMemory::where('user_id', $userId);
+        if ($key) {
+            $query->where('key', $key);
+        }
         $query->delete();
     }
 
-    public function purgeExpired(): int
+    public function decayMemories(): int
     {
-        return BotMemory::where('expires_at', '<', Carbon::now())->delete();
-    }
-
-    public function buildMemoryContext(int $botUserId): string
-    {
-        $parts = [];
-
-        $recent = $this->getRecentInteractions($botUserId);
-        if (!empty($recent)) {
-            $lines = array_map(fn ($e) => "- {$e['time']}：{$e['summary']}", array_slice($recent, -10));
-            $parts[] = "近期互动：\n" . implode("\n", $lines);
-        }
-
-        $allProfiles = BotMemory::where('bot_user_id', $botUserId)
-            ->where('type', 'user_profile')
-            ->where(function ($q) {
-                $q->whereNull('expires_at')->orWhere('expires_at', '>', Carbon::now());
+        $count = 0;
+        $memories = UserMemory::where('last_accessed_at', '<', Carbon::now()->subDays(30))
+            ->orWhere(function ($q) {
+                $q->where('importance', '<', 0.3)
+                  ->where('last_accessed_at', '<', Carbon::now()->subDays(7));
             })
             ->get();
 
-        if ($allProfiles->isNotEmpty()) {
-            $lines = [];
-            foreach ($allProfiles as $profile) {
-                $data = $profile->data['value'] ?? [];
-                $lines[] = "- 用户 {$data['display_name']}（{$data['username']}）：已互动 {$data['interaction_count']} 次";
+        foreach ($memories as $m) {
+            $m->importance -= 0.1;
+            if ($m->importance <= 0) {
+                $m->delete();
+            } else {
+                $m->save();
             }
-            $parts[] = "已知用户：\n" . implode("\n", $lines);
+            $count++;
         }
 
-        return implode("\n\n", $parts);
+        $oldEvents = InteractionEvent::where('created_at', '<', Carbon::now()->subDays(90))->delete();
+        $count += $oldEvents;
+
+        return $count;
     }
 }

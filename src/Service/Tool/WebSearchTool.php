@@ -10,17 +10,17 @@ class WebSearchTool implements ToolInterface
 
     public function __construct()
     {
-        $this->http = new Client(['timeout' => 10]);
+        $this->http = new Client(['timeout' => 15]);
     }
 
     public function getName(): string
     {
-        return 'web_search';
+        return 'search_web';
     }
 
     public function getDescription(): string
     {
-        return '联网搜索互联网信息。可以搜索指定关键词，返回网页标题和摘要。适用于获取实时信息、新闻、资料查询等。';
+        return '搜索互联网获取最新信息。当用户问到实时新闻、当前事件或你不确定的知识时，使用此工具获取最新资料。';
     }
 
     public function getParameters(): array
@@ -32,7 +32,7 @@ class WebSearchTool implements ToolInterface
                     'type' => 'string',
                     'description' => '搜索关键词',
                 ],
-                'count' => [
+                'limit' => [
                     'type' => 'integer',
                     'description' => '返回结果数量（默认5）',
                 ],
@@ -44,75 +44,39 @@ class WebSearchTool implements ToolInterface
     public function execute(array $args): string
     {
         $query = $args['query'] ?? '';
-        $count = min((int) ($args['count'] ?? 5), 10);
+        $limit = min((int) ($args['limit'] ?? 5), 10);
 
-        if (empty($query)) return '请提供搜索关键词。';
+        if (empty($query)) {
+            return '请提供搜索关键词。';
+        }
 
         try {
-            $response = $this->http->get('https://api.duckduckgo.com/', [
-                'query' => [
-                    'q' => $query,
-                    'format' => 'json',
-                    'no_html' => 1,
-                    'skip_disambig' => 1,
-                ],
+            $response = $this->http->get('https://html.duckduckgo.com/html/', [
+                'query' => ['q' => $query],
             ]);
 
-            $body = json_decode($response->getBody(), true);
+            $html = $response->getBody()->getContents();
+
+            preg_match_all('/<a[^>]*class="result__a"[^>]*href="([^"]*)"[^>]*>(.*?)<\/a>/s', $html, $links);
+            preg_match_all('/<a[^>]*class="result__snippet"[^>]*>(.*?)<\/a>/s', $html, $snippets);
+
             $results = [];
+            $count = min(count($links[0]), $limit);
 
-            if (!empty($body['AbstractText'])) {
-                $results[] = "[摘要] {$body['AbstractText']}";
-                if (!empty($body['AbstractURL'])) {
-                    $results[] = "  来源：{$body['AbstractURL']}";
-                }
-            }
-
-            if (!empty($body['RelatedTopics'])) {
-                foreach (array_slice($body['RelatedTopics'], 0, $count) as $topic) {
-                    if (isset($topic['Text'])) {
-                        $results[] = "- {$topic['Text']}";
-                    }
-                    if (isset($topic['FirstURL'])) {
-                        $results[] = "  {$topic['FirstURL']}";
-                    }
-                }
+            for ($i = 0; $i < $count; $i++) {
+                $title = strip_tags($links[2][$i] ?? '');
+                $url = $links[1][$i] ?? '';
+                $snippet = strip_tags($snippets[1][$i] ?? '');
+                $results[] = ($i + 1) . ". {$title}\n   {$url}\n   {$snippet}";
             }
 
             if (empty($results)) {
-                $results[] = "未找到关于「{$query}」的即时结果。";
-                $results[] = "建议使用更精确的关键词重新搜索。";
+                return "未找到与「{$query}」相关的网络结果。";
             }
 
-            $output = "搜索「{$query}」的结果：\n" . implode("\n", $results);
-            return trim($output);
-
+            return "网络搜索结果「{$query}」：\n" . implode("\n\n", $results);
         } catch (\Exception $e) {
-            try {
-                $response = $this->http->get('https://html.duckduckgo.com/html/', [
-                    'query' => ['q' => $query],
-                ]);
-                $html = (string) $response->getBody();
-
-                preg_match_all('/<a[^>]+class="result__a"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/', $html, $matches, PREG_SET_ORDER);
-
-                $results = [];
-                foreach (array_slice($matches, 0, $count) as $m) {
-                    $title = strip_tags($m[2] ?? '');
-                    $url = html_entity_decode($m[1] ?? '');
-                    if ($title) {
-                        $results[] = "- {$title}\n  {$url}";
-                    }
-                }
-
-                if (empty($results)) {
-                    return "搜索「{$query}」未找到结果。";
-                }
-
-                return "搜索「{$query}」的结果：\n" . implode("\n", $results);
-            } catch (\Exception $e2) {
-                return "联网搜索暂时不可用：{$e2->getMessage()}";
-            }
+            return "网络搜索失败：{$e->getMessage()}";
         }
     }
 }

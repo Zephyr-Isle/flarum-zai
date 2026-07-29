@@ -1,9 +1,10 @@
 <?php
 
 use Flarum\Extend;
-use Zephyrisle\FlarumZaiBot\Console\PurgeMemoryCommand;
+use Zephyrisle\FlarumZaiBot\Console\DecayMemoriesCommand;
 use Zephyrisle\FlarumZaiBot\Listener\ReplyToMessage;
 use Zephyrisle\FlarumZaiBot\Listener\ReplyToPost;
+
 return [
     (new Extend\Frontend('forum'))
         ->js(__DIR__ . '/js/dist/forum.js')
@@ -23,16 +24,15 @@ return [
         ]),
 
     (new Extend\Settings())
+        ->default('flarum-zai-bot.personality', 'friendly')
         ->default('flarum-zai-bot.bot_display_name', 'Yuki')
-        ->default('flarum-zai-bot.auto_engage', false)
-        ->default('flarum-zai-bot.auto_engage_chance', 20),
+        ->default('flarum-zai-bot.temperature', 0.8)
+        ->default('flarum-zai-bot.max_history', 10)
+        ->default('flarum-zai-bot.providers', '[]'),
 
     (new Extend\Console())
-        ->command(PurgeMemoryCommand::class)
-        ->schedule(PurgeMemoryCommand::class, function (\Illuminate\Console\Scheduling\Event $event) {
-            $event->daily();
+        ->command(DecayMemoriesCommand::class)
+        ->schedule(DecayMemoriesCommand::class, function (\Illuminate\Console\Scheduling\Event $event) {
+            $event->dailyAt('03:00');
         }),
-
-    (new Extend\ServiceProvider())
-        ->register(\Zephyrisle\FlarumZaiBot\Providers\BotServiceProvider::class),
 ];

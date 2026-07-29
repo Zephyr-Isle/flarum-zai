@@ -1,6 +1,6 @@
 {
     "name": "zephyrisle/flarum-zai-bot",
-    "description": "ZAI Bot - AI bot for Flarum with multi-account, memory, tools, cost optimization, and autonomous behavior.",
+    "description": "ZAI Bot - An AI-powered bot for Flarum with personality presets, tools (user info, search, files, stickers, likes), and extension integrations.",
     "type": "flarum-extension",
     "license": "MIT",
     "require": {
@@ -8,13 +8,13 @@
     },
     "suggest": {
         "flarum/messages": "Enables AI replies in private messages.",
-        "ramon/verified": "Enables user verification status.",
-        "ramon/stickers": "Enables sticker search tool.",
-        "flarum/likes": "Enables post like/unlike tool.",
-        "fof/user-bio": "Enables user bio display.",
-        "fof/upload": "Enables file viewing tool.",
-        "datlechin/flarum-birthdays": "Enables birthday display.",
-        "forumaker/profile-cover": "Enables cover image display."
+        "ramon/verified": "Enables user verification status in AI context and user info tool.",
+        "ramon/stickers": "Enables sticker search and listing tool.",
+        "flarum/likes": "Enables post like info query tool.",
+        "fof/user-bio": "Enables user bio display in profile and context.",
+        "fof/upload": "Enables viewing user uploaded files (text and images).",
+        "datlechin/flarum-birthdays": "Enables user birthday display in profile and context.",
+        "forumaker/profile-cover": "Enables user cover image display in profile info."
     },
     "authors": [
         {
