@@ -1,0 +1,41 @@
+zephyrisle-flarum-zai-bot:
+  admin:
+    settings:
+      api_url_label: API URL
+      api_url_help: OpenAI 兼容的 API 地址
+      api_keys_label: 'API 密钥（多个用逗号分隔，自动故障转移）'
+      api_keys_help: 多个密钥自动故障转移和轮询使用
+      api_key_label: 'API 密钥（Keys 为空时的后备）'
+      model_label: 模型
+      username_label: 机器人用户名
+      random_reply_chance_label: '随机回复概率（%）'
+      message_extension_label: '消息扩展（在活跃讨论中回复）'
+      system_prompt_label: 系统提示词
+      message_reply_enabled_label: '启用私信 AI 回复（需要 flarum/messages）'
+      personality_label: 性格
+      bot_display_name_label: 机器人显示名称
+      timezone_label: 时区
+      openweather_key_label: OpenWeather API 密钥
+      openweather_city_label: OpenWeather 城市
+      embedding_api_url_label: 'Embedding API 地址（留空使用主 API 地址）'
+      embedding_model_label: Embedding 模型
+      pgvector_host_label: 'PostgreSQL 主机（用于 pgvector 记忆，留空禁用）'
+      pgvector_port_label: PostgreSQL 端口
+      pgvector_db_label: PostgreSQL 数据库名
+      pgvector_user_label: PostgreSQL 用户名
+      pgvector_password_label: PostgreSQL 密码
+
+    affinities:
+      title: Bot 好感度
+      description: 用户对 AI 机器人的好感度分数。每次互动都会增加分数。
+      loading: 加载中...
+      refresh: 刷新
+      no_affinities: 暂无语录。
+      error: '加载好感度失败：{error}'
+      table:
+        user: 用户
+        total_score: 总分
+        chat_score: 私信分
+        forum_score: 论坛分
+        interactions: 互动次数
+        last_interaction: 最后互动

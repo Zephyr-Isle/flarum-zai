@@ -27,7 +27,7 @@ export default class AffinitiesPage extends ExtensionPage {
             })
             .catch((e: any) => {
                 this.loading = false;
-                this.error = 'Failed to load affinities: ' + (e.statusText || e.message || 'Unknown error');
+                this.error = e.statusText || e.message || 'Unknown error';
                 m.redraw();
             });
     }
@@ -35,44 +35,56 @@ export default class AffinitiesPage extends ExtensionPage {
     content() {
         return [
             super.content(),
-            m('h2', 'Bot Affinities'),
-            m('p', 'User affinity scores for the AI bot. Scores increase with each interaction.'),
-            this.loading
-                ? m('p', 'Loading...')
-                : this.error
-                    ? m('div', { className: 'Alert Alert--error' }, this.error)
+            m('div', { className: 'ZaiBot-affinities' }, [
+                m('div', { className: 'affinity-header' }, [
+                    m('h2', app.translator.trans('zephyrisle-flarum-zai-bot.admin.affinities.title')),
+                    this.loading
+                        ? m('span', { className: 'affinity-loading' }, app.translator.trans('zephyrisle-flarum-zai-bot.admin.affinities.loading'))
+                        : m('button', { className: 'Button Button--refresh', onclick: () => this.load() }, app.translator.trans('zephyrisle-flarum-zai-bot.admin.affinities.refresh')),
+                ]),
+                m('p', { className: 'affinity-summary' }, app.translator.trans('zephyrisle-flarum-zai-bot.admin.affinities.description')),
+                this.error
+                    ? m('div', { className: 'Alert Alert--error' }, app.translator.trans('zephyrisle-flarum-zai-bot.admin.affinities.error', { error: this.error }))
                     : this.renderTable(),
-            m('br'),
-            m('button', { className: 'Button', onclick: () => this.load() }, 'Refresh'),
+            ]),
         ];
     }
 
     renderTable() {
         if (!this.affinities || this.affinities.length === 0) {
-            return m('p', 'No affinities recorded yet.');
+            return m('div', { className: 'affinity-empty' }, app.translator.trans('zephyrisle-flarum-zai-bot.admin.affinities.no_affinities'));
         }
 
-        return m('table', { className: 'Table' }, [
-            m('thead', [
-                m('tr', [
-                    m('th', 'User'),
-                    m('th', 'Total Score'),
-                    m('th', 'Chat Score'),
-                    m('th', 'Forum Score'),
-                    m('th', 'Interactions'),
-                    m('th', 'Last Interaction'),
+        return m('div', { className: 'affinity-table-wrap' }, [
+            m('table', [
+                m('thead', [
+                    m('tr', [
+                        m('th', app.translator.trans('zephyrisle-flarum-zai-bot.admin.affinities.table.user')),
+                        m('th', app.translator.trans('zephyrisle-flarum-zai-bot.admin.affinities.table.total_score')),
+                        m('th', app.translator.trans('zephyrisle-flarum-zai-bot.admin.affinities.table.chat_score')),
+                        m('th', app.translator.trans('zephyrisle-flarum-zai-bot.admin.affinities.table.forum_score')),
+                        m('th', app.translator.trans('zephyrisle-flarum-zai-bot.admin.affinities.table.interactions')),
+                        m('th', app.translator.trans('zephyrisle-flarum-zai-bot.admin.affinities.table.last_interaction')),
+                    ]),
                 ]),
+                m('tbody', this.affinities.map((aff: any) => this.renderRow(aff))),
             ]),
-            m('tbody', this.affinities.map((aff: any) =>
-                m('tr', [
-                    m('td', aff.display_name + ' (@' + aff.username + ')'),
-                    m('td', String(aff.total_score)),
-                    m('td', String(aff.chat_score)),
-                    m('td', String(aff.forum_score)),
-                    m('td', String(aff.interaction_count)),
-                    m('td', aff.last_interaction_at || '-'),
-                ])
-            )),
+        ]);
+    }
+
+    renderRow(aff: any) {
+        const scoreClass = aff.total_score >= 200 ? 'high' : aff.total_score >= 100 ? 'medium' : 'low';
+        return m('tr', [
+            m('td', { className: 'affinity-user' }, [
+                aff.display_name,
+                ' ',
+                m('small', '@' + aff.username),
+            ]),
+            m('td', { className: 'affinity-score ' + scoreClass }, String(aff.total_score)),
+            m('td', String(aff.chat_score)),
+            m('td', String(aff.forum_score)),
+            m('td', String(aff.interaction_count)),
+            m('td', aff.last_interaction_at || '-'),
         ]);
     }
 }

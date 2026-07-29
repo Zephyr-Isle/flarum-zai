@@ -32,6 +32,8 @@ return [
 
     (new Extend\Model(\Zephyrisle\FlarumZaiBot\Model\UserPortrait::class)),
 
+    (new Extend\Locales(__DIR__ . '/locale')),
+
     (new Extend\Routes('api'))
         ->get('/zai-bot/affinities', 'zai-bot.affinities', \Zephyrisle\FlarumZaiBot\Api\Controller\ListAffinitiesController::class),
 ];

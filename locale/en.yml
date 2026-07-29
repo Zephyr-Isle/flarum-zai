@@ -1,0 +1,41 @@
+zephyrisle-flarum-zai-bot:
+  admin:
+    settings:
+      api_url_label: API URL
+      api_url_help: OpenAI-compatible API endpoint
+      api_keys_label: 'API Keys (comma-separated, auto-failover)'
+      api_keys_help: Multiple keys for automatic failover and round-robin
+      api_key_label: 'API Key (fallback if Keys empty)'
+      model_label: Model
+      username_label: Bot Username
+      random_reply_chance_label: 'Random Reply Chance (%)'
+      message_extension_label: 'Message Extension (reply in active discussions)'
+      system_prompt_label: System Prompt
+      message_reply_enabled_label: 'Enable AI Replies in Messages (requires flarum/messages)'
+      personality_label: Personality
+      bot_display_name_label: Bot Display Name
+      timezone_label: Timezone
+      openweather_key_label: OpenWeather API Key
+      openweather_city_label: OpenWeather City
+      embedding_api_url_label: 'Embedding API URL (leave empty to use main API URL)'
+      embedding_model_label: Embedding Model
+      pgvector_host_label: 'PostgreSQL Host (for pgvector memory, leave empty to disable)'
+      pgvector_port_label: PostgreSQL Port
+      pgvector_db_label: PostgreSQL Database
+      pgvector_user_label: PostgreSQL User
+      pgvector_password_label: PostgreSQL Password
+
+    affinities:
+      title: Bot Affinities
+      description: User affinity scores for the AI bot. Scores increase with each interaction.
+      loading: Loading...
+      refresh: Refresh
+      no_affinities: No affinities recorded yet.
+      error: 'Failed to load affinities: {error}'
+      table:
+        user: User
+        total_score: Total Score
+        chat_score: Chat Score
+        forum_score: Forum Score
+        interactions: Interactions
+        last_interaction: Last Interaction
