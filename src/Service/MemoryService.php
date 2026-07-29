@@ -35,6 +35,7 @@ class MemoryService
                     'headers' => [
                         'Authorization' => 'Bearer ' . $key,
                         'Content-Type' => 'application/json',
+                        'Accept' => 'application/json',
                     ],
                     'json' => [
                         'model' => $model,
@@ -52,6 +53,9 @@ class MemoryService
 
                 return null;
             } catch (\Exception $e) {
+                if ($this->isKeyDepleted($e)) {
+                    $this->removeApiKey($key);
+                }
                 $lastError = $e;
                 continue;
             }
@@ -137,5 +141,25 @@ class MemoryService
         } catch (\Exception $e) {
             return null;
         }
+    }
+
+    protected function isKeyDepleted(\Exception $e): bool
+    {
+        if ($e instanceof \GuzzleHttp\Exception\ClientException) {
+            $statusCode = $e->getResponse()->getStatusCode();
+            if (in_array($statusCode, [402, 403])) return true;
+            $body = json_decode((string)$e->getResponse()->getBody(), true);
+            $msg = $body['error']['message'] ?? $body['error']['code'] ?? '';
+            return (bool)preg_match('/insufficient|quota|exhausted|payment|balance/i', $msg);
+        }
+        return false;
+    }
+
+    protected function removeApiKey(string $key): void
+    {
+        $raw = $this->settings->get('flarum-zai-bot.api_keys', '');
+        $keys = array_filter(array_map('trim', explode(',', $raw)));
+        $keys = array_values(array_filter($keys, fn($k) => $k !== $key));
+        $this->settings->set('flarum-zai-bot.api_keys', implode(',', $keys));
     }
 }

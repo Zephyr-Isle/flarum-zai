@@ -120,7 +120,7 @@ class AIService
             $messages[] = ['role' => 'system', 'content' => '你可以使用以下工具：get_user_info（查询用户完整资料）、view_user_files（查看用户上传的文件）、search_forum（搜索论坛内容）、get_stickers（查看可用贴纸）、send_sticker（发送贴纸到当前讨论）、get_post_likes（查看点赞信息，或使用action:like/unlike进行点赞/取消点赞）、update_user_portrait（更新用户画像和好感度）。根据对话场景自主决定调用合适的工具提供帮助。每次对话结束时调用update_user_portrait记录对用户的观察并调整好感度。'];
         }
 
-        $keys = $this->getApiKeys();
+        $keys = $this->getKeysRotated();
         $lastError = null;
 
         foreach ($keys as $apiKey) {
@@ -141,6 +141,7 @@ class AIService
                     'headers' => [
                         'Authorization' => 'Bearer ' . $apiKey,
                         'Content-Type' => 'application/json',
+                        'Accept' => 'application/json',
                     ],
                     'json' => $requestBody,
                     'timeout' => 60,
@@ -157,9 +158,11 @@ class AIService
 
                 if (!empty($message['tool_calls'])) {
                     $messages[] = $message;
+                    $this->saveLastKeyIndex($apiKey);
                     return $this->handleToolCalls($message['tool_calls'], $messages, $tools, $apiUrl, $keys, $model);
                 }
 
+                $this->saveLastKeyIndex($apiKey);
                 return $message['content'] ?? null;
             } catch (\Exception $e) {
                 $lastError = $e;
@@ -185,6 +188,30 @@ class AIService
         return $keys ?: [];
     }
 
+    protected function getKeysRotated(): array
+    {
+        $keys = $this->getApiKeys();
+        if (empty($keys)) return [];
+
+        $lastIndex = (int)$this->settings->get('flarum-zai-bot.last_llm_key_index', -1);
+        $count = count($keys);
+        $startIndex = ($lastIndex + 1) % $count;
+
+        if ($startIndex > 0) {
+            return array_merge(array_slice($keys, $startIndex), array_slice($keys, 0, $startIndex));
+        }
+        return $keys;
+    }
+
+    protected function saveLastKeyIndex(string $apiKey): void
+    {
+        $originalKeys = $this->getApiKeys();
+        $index = array_search($apiKey, $originalKeys);
+        if ($index !== false) {
+            $this->settings->set('flarum-zai-bot.last_llm_key_index', (string)$index);
+        }
+    }
+
     protected function postChat(array $messages, array $toolDefinitions, string $apiUrl, array $keys, string $model): ?array
     {
         foreach ($keys as $apiKey) {
@@ -205,6 +232,7 @@ class AIService
                     'headers' => [
                         'Authorization' => 'Bearer ' . $apiKey,
                         'Content-Type' => 'application/json',
+                        'Accept' => 'application/json',
                     ],
                     'json' => $requestBody,
                     'timeout' => 60,
@@ -214,6 +242,7 @@ class AIService
                 $choice = $body['choices'][0] ?? null;
 
                 if ($choice) {
+                    $this->saveLastKeyIndex($apiKey);
                     return $choice;
                 }
             } catch (\Exception $e) {
