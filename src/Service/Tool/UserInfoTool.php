@@ -55,12 +55,18 @@ class UserInfoTool implements ToolInterface
             '用户组' => $user->groups->pluck('name_singular')->implode(', ') ?: '无',
         ];
 
-        if (class_exists(\Ramon\Verified\Models\UserVerification::class)) {
-            $verification = \Ramon\Verified\Models\UserVerification::where('user_id', $user->id)->first();
-            if ($verification && $verification->is_verified) {
+        if (class_exists(\Ramon\Verified\TierResolver::class)) {
+            $resolver = resolve(\Ramon\Verified\TierResolver::class);
+            $isVerified = $resolver->isVerified($user);
+            if ($isVerified) {
                 $info['认证状态'] = '已认证';
-                $info['认证等级'] = $verification->verified_tier ?? '默认';
-                $info['认证时间'] = $verification->verified_at ? $verification->verified_at->format('Y-m-d H:i:s') : '未知';
+                $verification = \Ramon\Verified\Models\UserVerification::where('user_id', $user->id)->first();
+                if ($verification) {
+                    $info['认证等级'] = $verification->verified_tier ?? '默认';
+                    if ($verification->verified_at) {
+                        $info['认证时间'] = $verification->verified_at->format('Y-m-d H:i:s');
+                    }
+                }
             } else {
                 $info['认证状态'] = '未认证';
             }

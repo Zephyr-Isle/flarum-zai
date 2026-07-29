@@ -50,9 +50,9 @@ class GenerateReplyForMessage extends AbstractJob
 
         $author = $message->user;
         $isVerified = false;
-        if ($author && class_exists(\Ramon\Verified\Models\UserVerification::class)) {
-            $verification = \Ramon\Verified\Models\UserVerification::where('user_id', $author->id)->first();
-            $isVerified = $verification && $verification->is_verified;
+        if ($author && class_exists(\Ramon\Verified\TierResolver::class)) {
+            $resolver = resolve(\Ramon\Verified\TierResolver::class);
+            $isVerified = $resolver->isVerified($author);
         }
 
         $history = [];
