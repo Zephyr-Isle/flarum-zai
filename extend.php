@@ -4,10 +4,6 @@ use Flarum\Extend;
 use Zephyrisle\FlarumZaiBot\Console\PurgeMemoryCommand;
 use Zephyrisle\FlarumZaiBot\Listener\ReplyToMessage;
 use Zephyrisle\FlarumZaiBot\Listener\ReplyToPost;
-use Zephyrisle\FlarumZaiBot\Service\BotAccountManager;
-use Zephyrisle\FlarumZaiBot\Service\Memory\MemoryManager;
-use Zephyrisle\FlarumZaiBot\Service\Provider\AIProvider;
-
 return [
     (new Extend\Frontend('forum'))
         ->js(__DIR__ . '/js/dist/forum.js')
@@ -41,9 +37,5 @@ return [
         }),
 
     (new Extend\ServiceProvider())
-        ->register(function ($app) {
-            $app->singleton(AIProvider::class);
-            $app->singleton(MemoryManager::class);
-            $app->singleton(BotAccountManager::class);
-        }),
+        ->register(\Zephyrisle\FlarumZaiBot\Providers\BotServiceProvider::class),
 ];
