@@ -18,9 +18,10 @@ class PurgeMemoryCommand extends AbstractCommand
         $this->setDescription('Purge expired bot memory entries.');
     }
 
-    protected function fire(): void
+    protected function fire(): int
     {
         $count = $this->memory->purgeExpired();
         $this->info("Purged {$count} expired memory entries.");
+        return 0;
     }
 }
