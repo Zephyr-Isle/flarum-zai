@@ -119,6 +119,7 @@ class AIService
             $message = $choice['message'] ?? [];
 
             if (!empty($message['tool_calls'])) {
+                $messages[] = $message;
                 return $this->handleToolCalls($message['tool_calls'], $messages, $tools, $apiUrl, $apiKey, $model);
             }
 
@@ -133,6 +134,18 @@ class AIService
         $toolMap = [];
         foreach ($tools as $tool) {
             $toolMap[$tool->getName()] = $tool;
+        }
+
+        $toolDefinitions = [];
+        foreach ($tools as $tool) {
+            $toolDefinitions[] = [
+                'type' => 'function',
+                'function' => [
+                    'name' => $tool->getName(),
+                    'description' => $tool->getDescription(),
+                    'parameters' => $tool->getParameters(),
+                ],
+            ];
         }
 
         foreach ($toolCalls as $tc) {
@@ -156,22 +169,42 @@ class AIService
         }
 
         try {
+            $requestBody = [
+                'model' => $model,
+                'messages' => $messages,
+                'max_tokens' => 1000,
+                'temperature' => 0.7,
+            ];
+
+            if (!empty($toolDefinitions)) {
+                $requestBody['tools'] = $toolDefinitions;
+                $requestBody['tool_choice'] = 'auto';
+            }
+
             $response = $this->client->post(rtrim($apiUrl, '/') . '/chat/completions', [
                 'headers' => [
                     'Authorization' => 'Bearer ' . $apiKey,
                     'Content-Type' => 'application/json',
                 ],
-                'json' => [
-                    'model' => $model,
-                    'messages' => $messages,
-                    'max_tokens' => 1000,
-                    'temperature' => 0.7,
-                ],
+                'json' => $requestBody,
                 'timeout' => 60,
             ]);
 
             $body = json_decode($response->getBody(), true);
-            return $body['choices'][0]['message']['content'] ?? null;
+            $choice = $body['choices'][0] ?? null;
+
+            if (!$choice) {
+                return null;
+            }
+
+            $message = $choice['message'] ?? [];
+
+            if (!empty($message['tool_calls'])) {
+                $messages[] = $message;
+                return $this->handleToolCalls($message['tool_calls'], $messages, $tools, $apiUrl, $apiKey, $model);
+            }
+
+            return $message['content'] ?? null;
         } catch (\Exception $e) {
             return null;
         }
