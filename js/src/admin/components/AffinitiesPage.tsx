@@ -34,6 +34,7 @@ export default class AffinitiesPage extends ExtensionPage {
 
     content() {
         return [
+            super.content(),
             m('h2', 'Bot Affinities'),
             m('p', 'User affinity scores for the AI bot. Scores increase with each interaction.'),
             this.loading
@@ -43,10 +44,6 @@ export default class AffinitiesPage extends ExtensionPage {
                     : this.renderTable(),
             m('br'),
             m('button', { className: 'Button', onclick: () => this.load() }, 'Refresh'),
-            m('br'),
-            m('br'),
-            this.submitButton(),
-            this.resetButton(),
         ];
     }
 
