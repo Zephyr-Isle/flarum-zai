@@ -50,5 +50,41 @@ export default [
             label: 'Enable AI Replies in Messages (requires flarum/messages)',
             type: 'boolean',
             default: false,
+        }))
+        .setting(() => ({
+            setting: 'flarum-zai-bot.personality',
+            label: 'Personality',
+            type: 'select',
+            options: {
+                friendly: 'Friendly',
+                tsundere: 'Tsundere',
+                loli: 'Loli',
+                cool: 'Cool',
+                custom: 'Custom',
+            },
+            default: 'friendly',
+        }))
+        .setting(() => ({
+            setting: 'flarum-zai-bot.bot_display_name',
+            label: 'Bot Display Name',
+            type: 'text',
+            default: 'Yuki',
+        }))
+        .setting(() => ({
+            setting: 'flarum-zai-bot.timezone',
+            label: 'Timezone',
+            type: 'text',
+            default: 'Asia/Shanghai',
+        }))
+        .setting(() => ({
+            setting: 'flarum-zai-bot.openweather_key',
+            label: 'OpenWeather API Key',
+            type: 'password',
+        }))
+        .setting(() => ({
+            setting: 'flarum-zai-bot.openweather_city',
+            label: 'OpenWeather City',
+            type: 'text',
+            default: 'Beijing',
         })),
 ];

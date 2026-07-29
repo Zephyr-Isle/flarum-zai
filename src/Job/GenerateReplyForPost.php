@@ -10,6 +10,7 @@ use Flarum\Queue\AbstractJob;
 use Flarum\Settings\SettingsRepositoryInterface;
 use Flarum\User\User;
 use Illuminate\Contracts\Events\Dispatcher;
+use Zephyrisle\FlarumZaiBot\Model\BotAffinity;
 use Zephyrisle\FlarumZaiBot\Service\AIService;
 use Zephyrisle\FlarumZaiBot\Service\Tool\LikeTool;
 use Zephyrisle\FlarumZaiBot\Service\Tool\SearchTool;
@@ -86,12 +87,19 @@ class GenerateReplyForPost extends AbstractJob
             ];
         }
 
+        $affinity = null;
+        if ($author) {
+            $affinity = BotAffinity::getOrCreate($author->id);
+        }
+
         $context = [
+            'channel' => 'forum',
             'current_post_id' => $post->id,
             'discussion_title' => $discussion->title ?? 'Untitled',
             'username' => $author ? $author->username : 'unknown',
             'display_name' => $author ? $author->display_name : '未知',
             'is_verified' => $isVerified,
+            'affinity_score' => $affinity?->total_score ?? null,
             'conversation_history' => $history,
         ];
 
@@ -120,6 +128,10 @@ class GenerateReplyForPost extends AbstractJob
         $tools = [new UserInfoTool(), new SearchTool(), new ViewFileTool(), new StickerTool(), new SendStickerTool(), new LikeTool($botUser->id)];
 
         $reply = $ai->generateReply($content, $context, $tools);
+
+        if ($author && $affinity) {
+            $affinity->addInteraction('forum');
+        }
 
         if (!$reply) {
             return;

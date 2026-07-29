@@ -31,8 +31,14 @@ class AIService
             return null;
         }
 
+        $channel = $context['channel'] ?? 'forum';
+        $affinityScore = $context['affinity_score'] ?? null;
+
+        $dailyInfo = $this->buildDailyInfo($channel, $affinityScore);
+
         $messages = [
             ['role' => 'system', 'content' => $this->buildSystemPrompt()],
+            ['role' => 'system', 'content' => $dailyInfo],
         ];
 
         if (!empty($context['current_post_id'])) {
@@ -101,7 +107,7 @@ class AIService
                     ],
                 ];
             }
-            $messages[] = ['role' => 'system', 'content' => '你可以使用以下工具：get_user_info（查询用户完整资料）、view_user_files（查看用户上传的文件）、search_forum（搜索论坛内容）、get_stickers（查看可用贴纸）、send_sticker（发送贴纸到当前讨论）、get_post_likes（查看点赞信息，或使用action:like/unlike进行点赞/取消点赞）。当用户询问详细信息时主动调用对应工具。如果用户要求点赞或取消点赞，使用get_post_likes工具并设置action参数。如果用户要求发送贴纸，先用get_stickers查找可用贴纸，再用send_sticker发送。'];
+            $messages[] = ['role' => 'system', 'content' => '你可以使用以下工具：get_user_info（查询用户完整资料）、view_user_files（查看用户上传的文件）、search_forum（搜索论坛内容）、get_stickers（查看可用贴纸）、send_sticker（发送贴纸到当前讨论）、get_post_likes（查看点赞信息，或使用action:like/unlike进行点赞/取消点赞）。根据对话场景自主决定调用合适的工具提供帮助，无需等待用户明确要求。可以主动查询用户信息、搜索论坛内容、查看贴纸等。点赞、取消点赞、发送贴纸等操作，在合适时机自行判断并执行。'];
         }
 
         try {
@@ -144,6 +150,192 @@ class AIService
         } catch (\Exception $e) {
             return null;
         }
+    }
+
+    protected function buildDailyInfo(string $channel = 'forum', ?int $affinityScore = null): string
+    {
+        try {
+            $timezone = $this->settings->get('flarum-zai-bot.timezone', 'Asia/Shanghai');
+            $now = \Carbon\Carbon::now($timezone);
+        } catch (\Exception $e) {
+            $now = \Carbon\Carbon::now('Asia/Shanghai');
+        }
+
+        $weekdayNames = ['日', '一', '二', '三', '四', '五', '六'];
+        $weekday = $weekdayNames[(int) $now->format('w')];
+        $dateStr = $now->format('Y年m月d日');
+        $timeStr = $now->format('H:i');
+
+        $parts = [];
+        $parts[] = "当前时间：{$dateStr} 星期{$weekday} {$timeStr}";
+
+        $this->appendHolidayInfo($now, $parts);
+
+        $weather = $this->getWeatherInfo();
+        if ($weather) {
+            $parts[] = $weather;
+        }
+
+        if ($channel === 'message') {
+            $parts[] = '对话场景：当前是通过私信聊天与你交流，请以亲切的一对一对话方式回复，语气可以更随意亲密。';
+        } else {
+            $parts[] = '对话场景：当前是在论坛帖子中回复，请保持适当的公开场合语气，回复内容对其他浏览者也有参考价值。';
+        }
+
+        $hour = (int) $now->format('H');
+        if ($channel === 'message' && ($hour >= 23 || $hour < 6)) {
+            $parts[] = "提示：现在时间已晚（{$timeStr}），如果用户在聊天，可以在合适的时候关心一下让用户早点休息，但不要强行结束对话。";
+        }
+
+        if ($affinityScore !== null) {
+            $level = $this->getAffinityLevel($affinityScore);
+            $parts[] = "用户好感度：{$affinityScore}分（{$level}），好感度越高表示与用户关系越好，回复可以更热情亲切。";
+        }
+
+        return implode("\n\n", $parts);
+    }
+
+    protected function appendHolidayInfo(\Carbon\Carbon $now, array &$parts): void
+    {
+        if (!class_exists(\ChineseHolidays\HolidayChecker::class)) {
+            return;
+        }
+
+        try {
+            $checker = new \ChineseHolidays\HolidayChecker();
+            $dateStr = $now->format('Y-m-d');
+
+            if ($checker->isHoliday($dateStr)) {
+                $info = $checker->getHolidayInfo($dateStr);
+                if ($info && isset($info['name'])) {
+                    $parts[] = "今天是【{$info['name']}】";
+                }
+            } elseif (!$checker->isWorkday($dateStr)) {
+                $parts[] = '今天是休息日。';
+            }
+        } catch (\Exception $e) {
+        }
+    }
+
+    protected function getWeatherInfo(): ?string
+    {
+        $apiKey = $this->settings->get('flarum-zai-bot.openweather_key');
+
+        if (!$apiKey) {
+            return null;
+        }
+
+        $city = $this->settings->get('flarum-zai-bot.openweather_city', 'Beijing');
+
+        $cacheFile = $this->getWeatherCachePath();
+        $cached = $this->loadWeatherCache($cacheFile);
+        if ($cached !== null) {
+            return $cached;
+        }
+
+        $info = $this->fetchWeather($apiKey, $city);
+
+        if ($info !== null) {
+            $this->saveWeatherCache($cacheFile, $info);
+        }
+
+        return $info;
+    }
+
+    protected function fetchWeather(string $apiKey, string $city): ?string
+    {
+        try {
+            $url = "https://api.openweathermap.org/data/2.5/forecast?q={$city}&appid={$apiKey}&units=metric&lang=zh_cn&cnt=8";
+
+            $response = $this->client->get($url, ['timeout' => 10]);
+            $data = json_decode($response->getBody(), true);
+
+            if (empty($data['list'])) {
+                return null;
+            }
+
+            $output = "【{$city}天气】";
+
+            $current = $data['list'][0] ?? null;
+            if ($current) {
+                $temp = round($current['main']['temp']);
+                $desc = $current['weather'][0]['description'] ?? '';
+                $humidity = $current['main']['humidity'];
+                $wind = round($current['wind']['speed']);
+                $output .= " 当前{$desc}，{$temp}°C，湿度{$humidity}%，风速{$wind}m/s";
+            }
+
+            $today = date('Y-m-d');
+            $hourly = [];
+            foreach ($data['list'] as $entry) {
+                if (strpos($entry['dt_txt'], $today) === 0) {
+                    $t = substr($entry['dt_txt'], 11, 5);
+                    $temp = round($entry['main']['temp']);
+                    $desc = $entry['weather'][0]['description'] ?? '';
+                    $hourly[] = "{$t} {$temp}°C {$desc}";
+                }
+            }
+
+            if (!empty($hourly)) {
+                $output .= "\n今日小时预报：\n";
+                foreach ($hourly as $h) {
+                    $output .= "- {$h}\n";
+                }
+            }
+
+            return trim($output);
+        } catch (\Exception $e) {
+            return null;
+        }
+    }
+
+    protected function loadWeatherCache(string $path): ?string
+    {
+        if (!file_exists($path)) {
+            return null;
+        }
+
+        $data = json_decode(file_get_contents($path), true);
+        if (!$data || !isset($data['timestamp']) || !isset($data['data'])) {
+            return null;
+        }
+
+        if (time() - $data['timestamp'] > 604800) {
+            return null;
+        }
+
+        return $data['data'];
+    }
+
+    protected function saveWeatherCache(string $path, string $info): void
+    {
+        $dir = dirname($path);
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0755, true);
+        }
+
+        file_put_contents($path, json_encode([
+            'timestamp' => time(),
+            'data' => $info,
+        ]));
+    }
+
+    protected function getWeatherCachePath(): string
+    {
+        $base = function_exists('storage_path') ? storage_path() : sys_get_temp_dir();
+        return $base . '/extensions/flarum-zai-bot/weather.json';
+    }
+
+    protected function getAffinityLevel(int $score): string
+    {
+        return match (true) {
+            $score >= 250 => '亲密无间',
+            $score >= 200 => '非常友好',
+            $score >= 150 => '友善',
+            $score >= 100 => '普通',
+            $score >= 50  => '冷淡',
+            default       => '疏远',
+        };
     }
 
     protected function buildSystemPrompt(): string
