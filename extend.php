@@ -2,7 +2,6 @@
 
 use Flarum\Extend;
 use Zephyrisle\FlarumZaiBot\Console\PurgeMemoryCommand;
-use Zephyrisle\FlarumZaiBot\Listener\AutoEngage;
 use Zephyrisle\FlarumZaiBot\Listener\ReplyToMessage;
 use Zephyrisle\FlarumZaiBot\Listener\ReplyToPost;
 use Zephyrisle\FlarumZaiBot\Service\BotAccountManager;
