@@ -89,12 +89,13 @@ class ReplyToPost
             $botPost = new CommentPost();
             $botPost->discussion_id = $post->discussion_id;
             $botPost->user_id = $botUser->id;
+            $botPost->created_at = Carbon::now();
             $botPost->type = CommentPost::$type;
             $botPost->setParsedContentAttribute($reply);
             $botPost->number = Post::query()
                 ->where('discussion_id', $post->discussion_id)
                 ->max('number') + 1;
-            $botPost->saveQuietly();
+            $botPost->save();
         } catch (\Exception $e) {
         }
     }
