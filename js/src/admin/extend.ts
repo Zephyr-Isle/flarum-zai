@@ -1,5 +1,5 @@
 import Extend from 'flarum/common/extenders';
-import AffinitiesPage from './index';
+import AffinitiesPage from './components/AffinitiesPage';
 
 export default [
     new Extend.Admin()
