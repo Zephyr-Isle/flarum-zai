@@ -5,7 +5,8 @@
     "license": "MIT",
     "require": {
         "flarum/core": "^2.0",
-        "chinese-holidays/holiday-checker": "^1.0"
+        "chinese-holidays/holiday-checker": "^1.0",
+        "ext-pdo": "*"
     },
     "suggest": {
         "flarum/messages": "Enables AI replies in private messages.",

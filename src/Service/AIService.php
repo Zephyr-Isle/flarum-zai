@@ -24,15 +24,11 @@ class AIService
     public function generateReply(string $prompt, array $context = [], array $tools = []): ?string
     {
         $apiUrl = $this->settings->get('flarum-zai-bot.api_url', 'https://api.openai.com/v1');
-        $apiKey = $this->settings->get('flarum-zai-bot.api_key');
         $model = $this->settings->get('flarum-zai-bot.model', 'gpt-3.5-turbo');
-
-        if (!$apiKey) {
-            return null;
-        }
 
         $channel = $context['channel'] ?? 'forum';
         $affinityScore = $context['affinity_score'] ?? null;
+        $userId = $context['user_id'] ?? null;
 
         $dailyInfo = $this->buildDailyInfo($channel, $affinityScore);
 
@@ -40,6 +36,20 @@ class AIService
             ['role' => 'system', 'content' => $this->buildSystemPrompt()],
             ['role' => 'system', 'content' => $dailyInfo],
         ];
+
+        if ($userId && !empty($context['portrait_summary'])) {
+            $messages[] = ['role' => 'system', 'content' => "用户画像：{$context['portrait_summary']}"];
+        }
+
+        if ($userId && !empty($context['memories']) && is_array($context['memories'])) {
+            $memStr = "相关记忆：\n";
+            foreach ($context['memories'] as $mem) {
+                $time = $mem['created_at'] ?? '';
+                $content = $mem['content'] ?? '';
+                $memStr .= "- [{$time}] {$content}\n";
+            }
+            $messages[] = ['role' => 'system', 'content' => trim($memStr)];
+        }
 
         if (!empty($context['current_post_id'])) {
             $messages[] = ['role' => 'system', 'content' => "当前帖子ID：{$context['current_post_id']}"];
@@ -107,49 +117,111 @@ class AIService
                     ],
                 ];
             }
-            $messages[] = ['role' => 'system', 'content' => '你可以使用以下工具：get_user_info（查询用户完整资料）、view_user_files（查看用户上传的文件）、search_forum（搜索论坛内容）、get_stickers（查看可用贴纸）、send_sticker（发送贴纸到当前讨论）、get_post_likes（查看点赞信息，或使用action:like/unlike进行点赞/取消点赞）。根据对话场景自主决定调用合适的工具提供帮助，无需等待用户明确要求。可以主动查询用户信息、搜索论坛内容、查看贴纸等。点赞、取消点赞、发送贴纸等操作，在合适时机自行判断并执行。'];
+            $messages[] = ['role' => 'system', 'content' => '你可以使用以下工具：get_user_info（查询用户完整资料）、view_user_files（查看用户上传的文件）、search_forum（搜索论坛内容）、get_stickers（查看可用贴纸）、send_sticker（发送贴纸到当前讨论）、get_post_likes（查看点赞信息，或使用action:like/unlike进行点赞/取消点赞）、update_user_portrait（更新用户画像和好感度）。根据对话场景自主决定调用合适的工具提供帮助。每次对话结束时调用update_user_portrait记录对用户的观察并调整好感度。'];
         }
 
-        try {
-            $requestBody = [
-                'model' => $model,
-                'messages' => $messages,
-                'max_tokens' => 1500,
-                'temperature' => 0.8,
-            ];
+        $keys = $this->getApiKeys();
+        $lastError = null;
 
-            if (!empty($toolDefinitions)) {
-                $requestBody['tools'] = $toolDefinitions;
-                $requestBody['tool_choice'] = 'auto';
+        foreach ($keys as $apiKey) {
+            try {
+                $requestBody = [
+                    'model' => $model,
+                    'messages' => $messages,
+                    'max_tokens' => 1500,
+                    'temperature' => 0.8,
+                ];
+
+                if (!empty($toolDefinitions)) {
+                    $requestBody['tools'] = $toolDefinitions;
+                    $requestBody['tool_choice'] = 'auto';
+                }
+
+                $response = $this->client->post(rtrim($apiUrl, '/') . '/chat/completions', [
+                    'headers' => [
+                        'Authorization' => 'Bearer ' . $apiKey,
+                        'Content-Type' => 'application/json',
+                    ],
+                    'json' => $requestBody,
+                    'timeout' => 60,
+                ]);
+
+                $body = json_decode($response->getBody(), true);
+                $choice = $body['choices'][0] ?? null;
+
+                if (!$choice) {
+                    continue;
+                }
+
+                $message = $choice['message'] ?? [];
+
+                if (!empty($message['tool_calls'])) {
+                    $messages[] = $message;
+                    return $this->handleToolCalls($message['tool_calls'], $messages, $tools, $apiUrl, $keys, $model);
+                }
+
+                return $message['content'] ?? null;
+            } catch (\Exception $e) {
+                $lastError = $e;
+                continue;
             }
-
-            $response = $this->client->post(rtrim($apiUrl, '/') . '/chat/completions', [
-                'headers' => [
-                    'Authorization' => 'Bearer ' . $apiKey,
-                    'Content-Type' => 'application/json',
-                ],
-                'json' => $requestBody,
-                'timeout' => 60,
-            ]);
-
-            $body = json_decode($response->getBody(), true);
-            $choice = $body['choices'][0] ?? null;
-
-            if (!$choice) {
-                return null;
-            }
-
-            $message = $choice['message'] ?? [];
-
-            if (!empty($message['tool_calls'])) {
-                $messages[] = $message;
-                return $this->handleToolCalls($message['tool_calls'], $messages, $tools, $apiUrl, $apiKey, $model);
-            }
-
-            return $message['content'] ?? null;
-        } catch (\Exception $e) {
-            return null;
         }
+
+        return null;
+    }
+
+    protected function getApiKeys(): array
+    {
+        $raw = $this->settings->get('flarum-zai-bot.api_keys', '');
+        $keys = array_filter(array_map('trim', explode(',', $raw)));
+
+        if (empty($keys)) {
+            $single = $this->settings->get('flarum-zai-bot.api_key', '');
+            if ($single) {
+                $keys = [$single];
+            }
+        }
+
+        return $keys ?: [];
+    }
+
+    protected function postChat(array $messages, array $toolDefinitions, string $apiUrl, array $keys, string $model): ?array
+    {
+        foreach ($keys as $apiKey) {
+            try {
+                $requestBody = [
+                    'model' => $model,
+                    'messages' => $messages,
+                    'max_tokens' => 1500,
+                    'temperature' => 0.8,
+                ];
+
+                if (!empty($toolDefinitions)) {
+                    $requestBody['tools'] = $toolDefinitions;
+                    $requestBody['tool_choice'] = 'auto';
+                }
+
+                $response = $this->client->post(rtrim($apiUrl, '/') . '/chat/completions', [
+                    'headers' => [
+                        'Authorization' => 'Bearer ' . $apiKey,
+                        'Content-Type' => 'application/json',
+                    ],
+                    'json' => $requestBody,
+                    'timeout' => 60,
+                ]);
+
+                $body = json_decode($response->getBody(), true);
+                $choice = $body['choices'][0] ?? null;
+
+                if ($choice) {
+                    return $choice;
+                }
+            } catch (\Exception $e) {
+                continue;
+            }
+        }
+
+        return null;
     }
 
     protected function buildDailyInfo(string $channel = 'forum', ?int $affinityScore = null): string
@@ -189,7 +261,7 @@ class AIService
 
         if ($affinityScore !== null) {
             $level = $this->getAffinityLevel($affinityScore);
-            $parts[] = "用户好感度：{$affinityScore}分（{$level}），好感度越高表示与用户关系越好，回复可以更热情亲切。";
+            $parts[] = "用户好感度：{$affinityScore}分（{$level}），好感度越高表示与用户关系越好，回复可以更热情亲切。每次互动结束后请使用update_user_portrait工具根据用户表现调整好感度。";
         }
 
         return implode("\n\n", $parts);
@@ -353,7 +425,7 @@ class AIService
         return $prompt;
     }
 
-    protected function handleToolCalls(array $toolCalls, array $messages, array $tools, string $apiUrl, string $apiKey, string $model): ?string
+    protected function handleToolCalls(array $toolCalls, array $messages, array $tools, string $apiUrl, array $keys, string $model): ?string
     {
         $toolMap = [];
         foreach ($tools as $tool) {
@@ -392,45 +464,19 @@ class AIService
             ];
         }
 
-        try {
-            $requestBody = [
-                'model' => $model,
-                'messages' => $messages,
-                'max_tokens' => 1500,
-                'temperature' => 0.8,
-            ];
+        $choice = $this->postChat($messages, $toolDefinitions, $apiUrl, $keys, $model);
 
-            if (!empty($toolDefinitions)) {
-                $requestBody['tools'] = $toolDefinitions;
-                $requestBody['tool_choice'] = 'auto';
-            }
-
-            $response = $this->client->post(rtrim($apiUrl, '/') . '/chat/completions', [
-                'headers' => [
-                    'Authorization' => 'Bearer ' . $apiKey,
-                    'Content-Type' => 'application/json',
-                ],
-                'json' => $requestBody,
-                'timeout' => 60,
-            ]);
-
-            $body = json_decode($response->getBody(), true);
-            $choice = $body['choices'][0] ?? null;
-
-            if (!$choice) {
-                return null;
-            }
-
-            $message = $choice['message'] ?? [];
-
-            if (!empty($message['tool_calls'])) {
-                $messages[] = $message;
-                return $this->handleToolCalls($message['tool_calls'], $messages, $tools, $apiUrl, $apiKey, $model);
-            }
-
-            return $message['content'] ?? null;
-        } catch (\Exception $e) {
+        if (!$choice) {
             return null;
         }
+
+        $message = $choice['message'] ?? [];
+
+        if (!empty($message['tool_calls'])) {
+            $messages[] = $message;
+            return $this->handleToolCalls($message['tool_calls'], $messages, $tools, $apiUrl, $keys, $model);
+        }
+
+        return $message['content'] ?? null;
     }
 }

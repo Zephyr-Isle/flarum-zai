@@ -9,8 +9,14 @@ export default [
             default: 'https://api.openai.com/v1',
         }))
         .setting(() => ({
+            setting: 'flarum-zai-bot.api_keys',
+            label: 'API Keys (comma-separated, auto-failover)',
+            type: 'text',
+            default: '',
+        }))
+        .setting(() => ({
             setting: 'flarum-zai-bot.api_key',
-            label: 'API Key',
+            label: 'API Key (fallback if Keys empty)',
             type: 'password',
         }))
         .setting(() => ({
@@ -86,5 +92,46 @@ export default [
             label: 'OpenWeather City',
             type: 'text',
             default: 'Beijing',
+        }))
+        .setting(() => ({
+            setting: 'flarum-zai-bot.embedding_api_url',
+            label: 'Embedding API URL (leave empty to use main API URL)',
+            type: 'text',
+            default: '',
+        }))
+        .setting(() => ({
+            setting: 'flarum-zai-bot.embedding_model',
+            label: 'Embedding Model',
+            type: 'text',
+            default: 'text-embedding-3-small',
+        }))
+        .setting(() => ({
+            setting: 'flarum-zai-bot.pgvector_host',
+            label: 'PostgreSQL Host (for pgvector memory, leave empty to disable)',
+            type: 'text',
+            default: '',
+        }))
+        .setting(() => ({
+            setting: 'flarum-zai-bot.pgvector_port',
+            label: 'PostgreSQL Port',
+            type: 'text',
+            default: '5432',
+        }))
+        .setting(() => ({
+            setting: 'flarum-zai-bot.pgvector_db',
+            label: 'PostgreSQL Database',
+            type: 'text',
+            default: '',
+        }))
+        .setting(() => ({
+            setting: 'flarum-zai-bot.pgvector_user',
+            label: 'PostgreSQL User',
+            type: 'text',
+            default: '',
+        }))
+        .setting(() => ({
+            setting: 'flarum-zai-bot.pgvector_password',
+            label: 'PostgreSQL Password',
+            type: 'password',
         })),
 ];

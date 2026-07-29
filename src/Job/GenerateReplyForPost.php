@@ -12,10 +12,13 @@ use Flarum\User\User;
 use Illuminate\Contracts\Events\Dispatcher;
 use Zephyrisle\FlarumZaiBot\Model\BotAffinity;
 use Zephyrisle\FlarumZaiBot\Service\AIService;
+use Zephyrisle\FlarumZaiBot\Service\MemoryService;
+use Zephyrisle\FlarumZaiBot\Service\PortraitService;
 use Zephyrisle\FlarumZaiBot\Service\Tool\LikeTool;
 use Zephyrisle\FlarumZaiBot\Service\Tool\SearchTool;
 use Zephyrisle\FlarumZaiBot\Service\Tool\SendStickerTool;
 use Zephyrisle\FlarumZaiBot\Service\Tool\StickerTool;
+use Zephyrisle\FlarumZaiBot\Service\Tool\UpdatePortraitTool;
 use Zephyrisle\FlarumZaiBot\Service\Tool\UserInfoTool;
 use Zephyrisle\FlarumZaiBot\Service\Tool\ViewFileTool;
 
@@ -88,18 +91,43 @@ class GenerateReplyForPost extends AbstractJob
         }
 
         $affinity = null;
+        $portraitSummary = null;
+        $memories = [];
+        $userId = $author ? $author->id : null;
+
         if ($author) {
             $affinity = BotAffinity::getOrCreate($author->id);
+
+            try {
+                $portraitService = resolve(PortraitService::class);
+                $portraitSummary = $portraitService->getPortraitSummary($author->id);
+            } catch (\Exception $e) {
+            }
+
+            try {
+                $memoryService = resolve(MemoryService::class);
+                if ($memoryService->isAvailable()) {
+                    $keys = $this->getApiKeys($settings);
+                    $embedding = $memoryService->generateEmbedding($content, $keys);
+                    if ($embedding) {
+                        $memories = $memoryService->searchMemories($author->id, $embedding, 5);
+                    }
+                }
+            } catch (\Exception $e) {
+            }
         }
 
         $context = [
             'channel' => 'forum',
+            'user_id' => $userId,
             'current_post_id' => $post->id,
             'discussion_title' => $discussion->title ?? 'Untitled',
             'username' => $author ? $author->username : 'unknown',
             'display_name' => $author ? $author->display_name : '未知',
             'is_verified' => $isVerified,
             'affinity_score' => $affinity?->total_score ?? null,
+            'portrait_summary' => $portraitSummary,
+            'memories' => $memories,
             'conversation_history' => $history,
         ];
 
@@ -125,16 +153,27 @@ class GenerateReplyForPost extends AbstractJob
             }
         }
 
-        $tools = [new UserInfoTool(), new SearchTool(), new ViewFileTool(), new StickerTool(), new SendStickerTool(), new LikeTool($botUser->id)];
+        $portraitTool = new UpdatePortraitTool(resolve(PortraitService::class), $userId);
+        $tools = [new UserInfoTool(), new SearchTool(), new ViewFileTool(), new StickerTool(), new SendStickerTool(), new LikeTool($botUser->id), $portraitTool];
 
         $reply = $ai->generateReply($content, $context, $tools);
 
-        if ($author && $affinity) {
-            $affinity->addInteraction('forum');
-        }
-
         if (!$reply) {
             return;
+        }
+
+        if ($author && $userId) {
+            try {
+                $memoryService = resolve(MemoryService::class);
+                if ($memoryService->isAvailable()) {
+                    $keys = $this->getApiKeys($settings);
+                    $embedding = $memoryService->generateEmbedding(strip_tags($reply), $keys);
+                    if ($embedding) {
+                        $memoryService->storeMemory($userId, "用户：{$context['display_name']} 在讨论「{$discussion->title}」中发帖：" . strip_tags($content) . "\nAI回复：" . strip_tags($reply), $embedding);
+                    }
+                }
+            } catch (\Exception $e) {
+            }
         }
 
         $botPost = new CommentPost();
@@ -145,6 +184,17 @@ class GenerateReplyForPost extends AbstractJob
         $botPost->save();
 
         $events->dispatch(new Posted($botPost));
+    }
+
+    protected function getApiKeys(SettingsRepositoryInterface $settings): array
+    {
+        $raw = $settings->get('flarum-zai-bot.api_keys', '');
+        $keys = array_filter(array_map('trim', explode(',', $raw)));
+        if (empty($keys)) {
+            $single = $settings->get('flarum-zai-bot.api_key', '');
+            if ($single) $keys = [$single];
+        }
+        return $keys ?: [];
     }
 
     protected function getBotUser(string $botUsername): User

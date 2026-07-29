@@ -33,25 +33,18 @@ class BotAffinity extends AbstractModel
         return $affinity;
     }
 
-    public function addInteraction(string $channel): void
+    public function adjustScore(int $change): void
     {
+        $this->total_score += $change;
+
+        if ($this->total_score < 0) {
+            $this->total_score = 0;
+        }
+        if ($this->total_score > 500) {
+            $this->total_score = 500;
+        }
+
         $this->interaction_count++;
-
-        if ($channel === 'message') {
-            $this->chat_score++;
-        } else {
-            $this->forum_score++;
-        }
-
-        $this->total_score = 100 + $this->chat_score + $this->forum_score;
-
-        if ($this->chat_score > 100) {
-            $this->chat_score = 100;
-        }
-        if ($this->forum_score > 100) {
-            $this->forum_score = 100;
-        }
-
         $this->last_interaction_at = now();
         $this->save();
     }
