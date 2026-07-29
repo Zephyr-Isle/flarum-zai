@@ -23,7 +23,10 @@ class AIService
             return null;
         }
 
-        $messages = [['role' => 'system', 'content' => $systemPrompt]];
+        $messages = [
+            ['role' => 'system', 'content' => $systemPrompt],
+            ['role' => 'system', 'content' => '请使用中文回复。'],
+        ];
 
         if ($context) {
             $messages[] = ['role' => 'system', 'content' => "Discussion context: $context"];
