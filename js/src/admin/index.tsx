@@ -1,6 +1,6 @@
 import app from 'flarum/admin/app';
 
-class AffinitiesPage {
+export default class AffinitiesPage {
     affinities: any[] | null = null;
     loading = true;
     error: string | null = null;
@@ -73,9 +73,3 @@ class AffinitiesPage {
         ]);
     }
 }
-
-app.initializers.add('zephyrisle-zai-bot', () => {
-    app.extensionData
-        .for('zephyrisle-flarum-zai-bot')
-        .registerPage(AffinitiesPage);
-});

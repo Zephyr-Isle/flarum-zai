@@ -1,4 +1,5 @@
 import Extend from 'flarum/common/extenders';
+import AffinitiesPage from './index';
 
 export default [
     new Extend.Admin()
@@ -133,5 +134,9 @@ export default [
             setting: 'flarum-zai-bot.pgvector_password',
             label: 'PostgreSQL Password',
             type: 'password',
+        }))
+        .page(() => ({
+            title: 'Bot Affinities',
+            component: AffinitiesPage,
         })),
 ];
