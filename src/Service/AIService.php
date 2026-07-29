@@ -42,6 +42,21 @@ class AIService
             if (isset($context['is_verified'])) {
                 $userContext .= "- 认证状态：" . ($context['is_verified'] ? '已认证' : '未认证') . "\n";
             }
+            if (!empty($context['verified_tier'])) {
+                $userContext .= "- 认证等级：{$context['verified_tier']}\n";
+            }
+            if (!empty($context['verified_at'])) {
+                $userContext .= "- 认证时间：{$context['verified_at']}\n";
+            }
+            if (!empty($context['group_names'])) {
+                $userContext .= "- 用户组：{$context['group_names']}\n";
+            }
+            if (!empty($context['post_count'])) {
+                $userContext .= "- 发帖数：{$context['post_count']}\n";
+            }
+            if (!empty($context['joined_at'])) {
+                $userContext .= "- 注册时间：{$context['joined_at']}\n";
+            }
             $messages[] = ['role' => 'system', 'content' => trim($userContext)];
         }
 
@@ -69,6 +84,7 @@ class AIService
                     ],
                 ];
             }
+            $messages[] = ['role' => 'system', 'content' => '你拥有工具可以使用。当用户询问详细信息（如用户资料、搜索结果）时，请主动调用对应工具获取最新数据，不要仅凭已提供的信息做有限回复。'];
         }
 
         try {

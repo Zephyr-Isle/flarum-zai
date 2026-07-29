@@ -78,6 +78,20 @@ class GenerateReplyForMessage extends AbstractJob
             'conversation_history' => $history,
         ];
 
+        if ($author) {
+            $context['joined_at'] = $author->joined_at ? $author->joined_at->format('Y-m-d H:i:s') : null;
+            $context['post_count'] = $author->posts()->count();
+            $context['group_names'] = $author->groups->pluck('name_singular')->implode(', ') ?: null;
+
+            if (class_exists(\Ramon\Verified\Models\UserVerification::class)) {
+                $verification = \Ramon\Verified\Models\UserVerification::where('user_id', $author->id)->first();
+                if ($verification) {
+                    $context['verified_tier'] = $verification->verified_tier;
+                    $context['verified_at'] = $verification->verified_at ? $verification->verified_at->format('Y-m-d H:i:s') : null;
+                }
+            }
+        }
+
         $tools = [new UserInfoTool(), new SearchTool()];
 
         $reply = $ai->generateReply($message->content, $context, $tools);
