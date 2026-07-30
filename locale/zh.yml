@@ -34,8 +34,6 @@ zephyrisle-flarum-zai-bot:
       error: '加载好感度失败：{error}'
       table:
         user: 用户
-        total_score: 总分
-        chat_score: 私信分
-        forum_score: 论坛分
+        total_score: 好感度
         interactions: 互动次数
         last_interaction: 最后互动

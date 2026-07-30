@@ -61,8 +61,6 @@ export default class AffinitiesPage extends ExtensionPage {
                     m('tr', [
                         m('th', app.translator.trans('zephyrisle-flarum-zai-bot.admin.affinities.table.user')),
                         m('th', app.translator.trans('zephyrisle-flarum-zai-bot.admin.affinities.table.total_score')),
-                        m('th', app.translator.trans('zephyrisle-flarum-zai-bot.admin.affinities.table.chat_score')),
-                        m('th', app.translator.trans('zephyrisle-flarum-zai-bot.admin.affinities.table.forum_score')),
                         m('th', app.translator.trans('zephyrisle-flarum-zai-bot.admin.affinities.table.interactions')),
                         m('th', app.translator.trans('zephyrisle-flarum-zai-bot.admin.affinities.table.last_interaction')),
                     ]),
@@ -73,7 +71,7 @@ export default class AffinitiesPage extends ExtensionPage {
     }
 
     renderRow(aff: any) {
-        const scoreClass = aff.total_score >= 200 ? 'high' : aff.total_score >= 100 ? 'medium' : 'low';
+        const scoreClass = aff.total_score >= 40 ? 'high' : aff.total_score >= 0 ? 'medium' : 'low';
         return m('tr', [
             m('td', { className: 'affinity-user' }, [
                 aff.display_name,
@@ -81,8 +79,6 @@ export default class AffinitiesPage extends ExtensionPage {
                 m('small', '@' + aff.username),
             ]),
             m('td', { className: 'affinity-score ' + scoreClass }, String(aff.total_score)),
-            m('td', String(aff.chat_score)),
-            m('td', String(aff.forum_score)),
             m('td', String(aff.interaction_count)),
             m('td', aff.last_interaction_at || '-'),
         ]);

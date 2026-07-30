@@ -34,8 +34,6 @@ zephyrisle-flarum-zai-bot:
       error: 'Failed to load affinities: {error}'
       table:
         user: User
-        total_score: Total Score
-        chat_score: Chat Score
-        forum_score: Forum Score
+        total_score: Score
         interactions: Interactions
         last_interaction: Last Interaction

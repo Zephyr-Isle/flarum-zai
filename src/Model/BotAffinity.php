@@ -23,9 +23,7 @@ class BotAffinity extends AbstractModel
         if (!$affinity) {
             $affinity = new static();
             $affinity->user_id = $userId;
-            $affinity->total_score = 100;
-            $affinity->chat_score = 0;
-            $affinity->forum_score = 0;
+            $affinity->total_score = 0;
             $affinity->interaction_count = 0;
             $affinity->save();
         }
@@ -33,17 +31,9 @@ class BotAffinity extends AbstractModel
         return $affinity;
     }
 
-    public function adjustScore(int $change): void
+    public function setScore(int $score): void
     {
-        $this->total_score += $change;
-
-        if ($this->total_score < 0) {
-            $this->total_score = 0;
-        }
-        if ($this->total_score > 500) {
-            $this->total_score = 500;
-        }
-
+        $this->total_score = max(-100, min(100, $score));
         $this->interaction_count++;
         $this->last_interaction_at = now();
         $this->save();

@@ -145,6 +145,10 @@ class GenerateReplyForMessage extends AbstractJob
 
         $reply = $ai->generateReply($message->content, $context, $tools);
 
+        if ($reply && $userId) {
+            $reply = $ai->parseSecretEval($reply, $userId);
+        }
+
         if (!$reply) {
             return;
         }
@@ -153,8 +157,8 @@ class GenerateReplyForMessage extends AbstractJob
             try {
                 $memoryService = resolve(MemoryService::class);
                 if ($memoryService->isAvailable()) {
-                    $keys = $this->getApiKeys($settings);
-                    $embedding = $memoryService->generateEmbedding($message->content . "\n" . strip_tags($reply), $keys);
+                    $embeddingKeys = $this->getEmbeddingApiKeys($settings);
+                    $embedding = $memoryService->generateEmbedding($message->content . "\n" . strip_tags($reply), $embeddingKeys);
                     if ($embedding) {
                         $memoryService->storeMemory($userId, "私信对话：{$message->content}\nAI回复：" . strip_tags($reply), $embedding);
                     }
@@ -184,6 +188,16 @@ class GenerateReplyForMessage extends AbstractJob
             if ($single) $keys = [$single];
         }
         return $keys ?: [];
+    }
+
+    protected function getEmbeddingApiKeys(SettingsRepositoryInterface $settings): array
+    {
+        $raw = $settings->get('flarum-zai-bot.embedding_api_keys', '');
+        $keys = array_filter(array_map('trim', explode(',', $raw)));
+        if (!empty($keys)) {
+            return $keys;
+        }
+        return $this->getApiKeys($settings);
     }
 
     protected function getBotUser(string $botUsername): User

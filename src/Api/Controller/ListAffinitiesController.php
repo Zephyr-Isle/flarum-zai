@@ -27,8 +27,6 @@ class ListAffinitiesController implements RequestHandlerInterface
                     'username' => $aff->user?->username ?? '已删除',
                     'display_name' => $aff->user?->display_name ?? '已删除',
                     'total_score' => $aff->total_score,
-                    'chat_score' => $aff->chat_score,
-                    'forum_score' => $aff->forum_score,
                     'interaction_count' => $aff->interaction_count,
                     'last_interaction_at' => $aff->last_interaction_at?->format('Y-m-d H:i:s'),
                 ];

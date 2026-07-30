@@ -95,6 +95,12 @@ export default [
             default: 'Beijing',
         }))
         .setting(() => ({
+            setting: 'flarum-zai-bot.embedding_api_keys',
+            label: 'Embedding API Keys (comma-separated, separate from LLM keys)',
+            type: 'text',
+            default: '',
+        }))
+        .setting(() => ({
             setting: 'flarum-zai-bot.embedding_api_url',
             label: 'Embedding API URL (leave empty to use main API URL)',
             type: 'text',

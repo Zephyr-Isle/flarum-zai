@@ -157,9 +157,9 @@ class MemoryService
 
     protected function removeApiKey(string $key): void
     {
-        $raw = $this->settings->get('flarum-zai-bot.api_keys', '');
+        $raw = $this->settings->get('flarum-zai-bot.embedding_api_keys', '');
         $keys = array_filter(array_map('trim', explode(',', $raw)));
         $keys = array_values(array_filter($keys, fn($k) => $k !== $key));
-        $this->settings->set('flarum-zai-bot.api_keys', implode(',', $keys));
+        $this->settings->set('flarum-zai-bot.embedding_api_keys', implode(',', $keys));
     }
 }

@@ -79,4 +79,40 @@
     .Button--refresh {
         margin-bottom: 16px;
     }
+
+    @media (prefers-color-scheme: dark) {
+        .affinity-table-wrap {
+            background: #1a1a2e;
+            box-shadow: 0 1px 3px rgba(0,0,0,.3);
+        }
+
+        table {
+            th {
+                background: #16213e;
+                color: #8899b0;
+                border-bottom-color: #2a3a5a;
+            }
+
+            td {
+                border-bottom-color: #222;
+                color: #c8d0dc;
+            }
+
+            tr:hover td {
+                background: #1e2a4a;
+            }
+        }
+
+        .affinity-summary {
+            color: #8899b0;
+        }
+
+        .affinity-empty {
+            color: #667;
+        }
+
+        .affinity-user small {
+            color: #667;
+        }
+    }
 }

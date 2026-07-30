@@ -8,9 +8,7 @@ return Migration::createTable(
     function (Blueprint $table) {
         $table->increments('id');
         $table->integer('user_id')->unsigned()->unique();
-        $table->integer('total_score')->default(100);
-        $table->integer('chat_score')->default(0);
-        $table->integer('forum_score')->default(0);
+        $table->integer('total_score')->default(0);
         $table->integer('interaction_count')->default(0);
         $table->dateTime('last_interaction_at')->nullable();
         $table->timestamps();
