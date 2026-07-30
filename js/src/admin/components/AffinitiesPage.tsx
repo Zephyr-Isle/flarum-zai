@@ -5,10 +5,34 @@ export default class AffinitiesPage extends ExtensionPage {
     affinities: any[] | null = null;
     loading = true;
     error: string | null = null;
+    testResults: any = {};
+    testing: string | null = null;
 
     oninit(vnode: any) {
         super.oninit(vnode);
         this.load();
+    }
+
+    testApi(type: string) {
+        this.testing = type;
+        this.testResults = {};
+        m.redraw();
+
+        app.request({
+            method: 'POST',
+            url: app.forum.attribute('apiUrl') + '/zai-bot/test-api',
+            body: { type },
+        })
+            .then((data: any) => {
+                this.testResults = data;
+                this.testing = null;
+                m.redraw();
+            })
+            .catch((e: any) => {
+                this.testResults = { error: e.statusText || e.message || 'Request failed' };
+                this.testing = null;
+                m.redraw();
+            });
     }
 
     load() {
@@ -32,9 +56,48 @@ export default class AffinitiesPage extends ExtensionPage {
             });
     }
 
+    renderTestResult(result: any): any {
+        if (!result) return null;
+        if (result.success) {
+            const detail = result.reply ? `Reply: ${result.reply}` : `Dimensions: ${result.dimensions}`;
+            return m('span', { style: 'color:#2e7d32;font-size:12px' }, `OK - ${detail}`);
+        }
+        return m('span', { style: 'color:#c62828;font-size:12px' }, `Failed: ${result.error}`);
+    }
+
     content() {
+        const testSection = m('div', { style: 'margin-bottom:24px;padding:16px;background:#f6f9fc;border-radius:8px' }, [
+            m('h3', { style: 'margin:0 0 8px' }, 'API Test'),
+            m('div', { style: 'display:flex;gap:8px;align-items:center' }, [
+                m('button', {
+                    className: 'Button' + (this.testing === 'all' ? ' Button--loading' : ''),
+                    onclick: () => this.testApi('all'),
+                    disabled: !!this.testing,
+                }, 'Test All'),
+                m('button', {
+                    className: 'Button' + (this.testing === 'llm' ? ' Button--loading' : ''),
+                    onclick: () => this.testApi('llm'),
+                    disabled: !!this.testing,
+                }, 'Test LLM'),
+                m('button', {
+                    className: 'Button' + (this.testing === 'embedding' ? ' Button--loading' : ''),
+                    onclick: () => this.testApi('embedding'),
+                    disabled: !!this.testing,
+                }, 'Test Embedding'),
+                this.testing ? m('span', ' Testing...') : null,
+            ]),
+            this.testResults.llm ? m('div', { style: 'margin-top:8px' }, [
+                m('strong', 'LLM: '), this.renderTestResult(this.testResults.llm),
+            ]) : null,
+            this.testResults.embedding ? m('div', { style: 'margin-top:4px' }, [
+                m('strong', 'Embedding: '), this.renderTestResult(this.testResults.embedding),
+            ]) : null,
+            this.testResults.error ? m('div', { style: 'margin-top:8px;color:#c62828' }, this.testResults.error) : null,
+        ]);
+
         return [
             super.content(),
+            testSection,
             m('div', { className: 'ZaiBot-affinities' }, [
                 m('div', { className: 'affinity-header' }, [
                     m('h2', app.translator.trans('zephyrisle-flarum-zai-bot.admin.affinities.title')),
