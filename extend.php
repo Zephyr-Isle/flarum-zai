@@ -25,7 +25,8 @@ return [
     (new Extend\Settings())
         ->default('flarum-zai-bot.bot_display_name', 'Yuki')
         ->default('flarum-zai-bot.timezone', 'Asia/Shanghai')
-        ->default('flarum-zai-bot.openweather_city', 'Beijing'),
+        ->default('flarum-zai-bot.openweather_city', 'Beijing')
+        ->default('flarum-zai-bot.jina_optimization_mode', false),
 
     (new Extend\Model(\Zephyrisle\FlarumZaiBot\Model\BotAffinity::class)),
 

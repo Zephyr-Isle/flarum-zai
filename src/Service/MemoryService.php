@@ -159,7 +159,15 @@ class MemoryService
     {
         $raw = $this->settings->get('flarum-zai-bot.embedding_api_keys', '');
         $keys = array_filter(array_map('trim', explode(',', $raw)));
+        if (in_array($key, $keys)) {
+            $keys = array_values(array_filter($keys, fn($k) => $k !== $key));
+            $this->settings->set('flarum-zai-bot.embedding_api_keys', implode(',', $keys));
+            return;
+        }
+
+        $raw = $this->settings->get('flarum-zai-bot.api_keys', '');
+        $keys = array_filter(array_map('trim', explode(',', $raw)));
         $keys = array_values(array_filter($keys, fn($k) => $k !== $key));
-        $this->settings->set('flarum-zai-bot.embedding_api_keys', implode(',', $keys));
+        $this->settings->set('flarum-zai-bot.api_keys', implode(',', $keys));
     }
 }

@@ -71,6 +71,18 @@ export default [
             default: 'Asia/Shanghai',
         }))
         .setting(() => ({
+            setting: 'flarum-zai-bot.jina_optimization_mode',
+            label: 'Jina Optimization Mode (enable web search via Jina AI)',
+            type: 'boolean',
+            default: false,
+        }))
+        .setting(() => ({
+            setting: 'flarum-zai-bot.jina_proxy_url',
+            label: 'Jina Proxy URL (for regions where Jina is blocked, e.g. https://r.jina.ai mirror)',
+            type: 'text',
+            default: '',
+        }))
+        .setting(() => ({
             setting: 'flarum-zai-bot.openweather_key',
             label: 'OpenWeather API Key',
             type: 'password',

@@ -113,7 +113,10 @@ class AIService
                     ],
                 ];
             }
-            $messages[] = ['role' => 'system', 'content' => '你可以使用以下工具：get_user_info（查询用户完整资料）、view_user_files（查看用户上传的文件）、search_forum（搜索论坛内容）、get_stickers（查看可用贴纸）、send_sticker（发送贴纸到当前讨论）、get_post_likes（查看点赞信息，或使用action:like/unlike进行点赞/取消点赞）、update_user_portrait（更新用户画像和好感度）。根据对话场景自主决定调用合适的工具提供帮助。每次对话结束时调用update_user_portrait记录对用户的观察并调整好感度。'];
+
+            $toolNames = array_map(fn($t) => $t->getName(), $tools);
+            $toolHint = '你可以使用以下工具：' . implode('、', $toolNames) . '。根据对话场景自主决定调用合适的工具提供帮助。每次对话结束时调用update_user_portrait记录对用户的观察并调整好感度。';
+            $messages[] = ['role' => 'system', 'content' => $toolHint];
         }
 
         $keys = $this->getKeysRotated();

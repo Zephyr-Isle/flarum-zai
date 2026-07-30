@@ -16,6 +16,7 @@ use Zephyrisle\FlarumZaiBot\Service\Tool\SearchTool;
 use Zephyrisle\FlarumZaiBot\Service\Tool\SendStickerTool;
 use Zephyrisle\FlarumZaiBot\Service\Tool\StickerTool;
 use Zephyrisle\FlarumZaiBot\Service\Tool\UpdatePortraitTool;
+use Zephyrisle\FlarumZaiBot\Service\Tool\WebSearchTool;
 use Zephyrisle\FlarumZaiBot\Service\Tool\UserInfoTool;
 use Zephyrisle\FlarumZaiBot\Service\Tool\ViewFileTool;
 
@@ -141,7 +142,7 @@ class GenerateReplyForMessage extends AbstractJob
         }
 
         $portraitTool = new UpdatePortraitTool(resolve(PortraitService::class), $userId);
-        $tools = [new UserInfoTool(), new SearchTool(), new ViewFileTool(), new StickerTool(), new SendStickerTool(), new LikeTool($botUser->id), $portraitTool];
+        $tools = [new UserInfoTool(), new SearchTool(), new ViewFileTool(), new StickerTool(), new SendStickerTool(), new LikeTool($botUser->id), $portraitTool, resolve(WebSearchTool::class)];
 
         $reply = $ai->generateReply($message->content, $context, $tools);
 
