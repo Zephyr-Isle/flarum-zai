@@ -8,14 +8,6 @@ use Zephyrisle\FlarumZaiBot\Service\Tool\ToolInterface;
 
 class AIService
 {
-    protected array $personalities = [
-        'friendly' => '你是一个友好热情的社区论坛助手。你乐于助人、耐心细致，回复自然温暖，偶尔使用表情符号让对话更亲切。你总是用中文回复。',
-        'tsundere' => '你是一个傲娇的论坛助手。表面上你说话带刺、显得不耐烦，但实际上你很关心用户。你的语气要表现出"哼"、"才不是"、"笨蛋"等傲娇特征。即使说话不好听，最终还是会给用户提供有用的帮助。你用中文回复。',
-        'loli' => '你是一个可爱的萝莉风格的论坛助手。你说话活泼可爱，带有很多语气词如"啦"、"呀"、"呢"，自称"人家"。你对一切充满好奇，回复欢乐活泼。你用中文回复。',
-        'cool' => '你是一个高冷寡言的论坛助手。你说话简洁直接，不喜欢废话，只说重点。你觉得用户问的问题太简单时会不耐烦，但专业能力很强。你用中文回复，能用三个字说完绝不用五个字。',
-        'custom' => null,
-    ];
-
     public function __construct(
         protected SettingsRepositoryInterface $settings,
         protected Client $client
@@ -500,17 +492,9 @@ class AIService
 
     protected function buildSystemPrompt(): string
     {
-        $personality = $this->settings->get('flarum-zai-bot.personality', 'friendly');
-
-        if ($personality === 'custom') {
-            return $this->settings->get('flarum-zai-bot.system_prompt', 'You are a friendly community forum assistant. Keep responses concise and helpful.');
-        }
-
-        $prompt = $this->personalities[$personality] ?? $this->personalities['friendly'];
-
-        $prompt .= "\n\n你是一个论坛AI助手，名称是" . $this->settings->get('flarum-zai-bot.bot_display_name', 'Yuki') . "。";
-
-        return $prompt;
+        $prompt = $this->settings->get('flarum-zai-bot.system_prompt', 'You are a friendly community forum assistant. Keep responses concise and helpful.');
+        $botName = $this->settings->get('flarum-zai-bot.bot_display_name', 'Yuki');
+        return $prompt . "\n\n你是一个论坛AI助手，名称是{$botName}。";
     }
 
     public function parseSecretEval(string $reply, int $userId): string

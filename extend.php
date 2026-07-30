@@ -23,7 +23,6 @@ return [
         ]),
 
     (new Extend\Settings())
-        ->default('flarum-zai-bot.personality', 'friendly')
         ->default('flarum-zai-bot.bot_display_name', 'Yuki')
         ->default('flarum-zai-bot.timezone', 'Asia/Shanghai')
         ->default('flarum-zai-bot.openweather_city', 'Beijing'),

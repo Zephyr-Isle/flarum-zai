@@ -59,19 +59,6 @@ export default [
             default: false,
         }))
         .setting(() => ({
-            setting: 'flarum-zai-bot.personality',
-            label: 'Personality',
-            type: 'select',
-            options: {
-                friendly: 'Friendly',
-                tsundere: 'Tsundere',
-                loli: 'Loli',
-                cool: 'Cool',
-                custom: 'Custom',
-            },
-            default: 'friendly',
-        }))
-        .setting(() => ({
             setting: 'flarum-zai-bot.bot_display_name',
             label: 'Bot Display Name',
             type: 'text',
