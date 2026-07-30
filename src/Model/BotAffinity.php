@@ -31,9 +31,9 @@ class BotAffinity extends AbstractModel
         return $affinity;
     }
 
-    public function setScore(int $score): void
+    public function adjustScore(int $delta): void
     {
-        $this->total_score = max(-100, min(100, $score));
+        $this->total_score = max(-100, min(100, $this->total_score + $delta));
         $this->interaction_count++;
         $this->last_interaction_at = \Carbon\Carbon::now();
         $this->save();
