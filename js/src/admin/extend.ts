@@ -78,9 +78,15 @@ export default [
         }))
         .setting(() => ({
             setting: 'flarum-zai-bot.jina_proxy_url',
-            label: 'Jina Proxy URL (override; defaults to r.jinaai.cn / s.jinaai.cn when optimized)',
+            label: 'Jina Proxy URL (custom proxy override)',
             type: 'text',
             default: '',
+        }))
+        .setting(() => ({
+            setting: 'flarum-zai-bot.jina_use_builtin_proxy',
+            label: 'Use server as built-in Jina proxy (requests go through this server)',
+            type: 'boolean',
+            default: false,
         }))
         .setting(() => ({
             setting: 'flarum-zai-bot.openweather_key',

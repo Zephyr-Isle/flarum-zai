@@ -36,5 +36,6 @@ return [
 
     (new Extend\Routes('api'))
         ->get('/zai-bot/affinities', 'zai-bot.affinities', \Zephyrisle\FlarumZaiBot\Api\Controller\ListAffinitiesController::class)
-        ->post('/zai-bot/test-api', 'zai-bot.test-api', \Zephyrisle\FlarumZaiBot\Api\Controller\TestApiController::class),
+        ->post('/zai-bot/test-api', 'zai-bot.test-api', \Zephyrisle\FlarumZaiBot\Api\Controller\TestApiController::class)
+        ->get('/zai-bot/jina-proxy', 'zai-bot.jina-proxy', \Zephyrisle\FlarumZaiBot\Api\Controller\JinaProxyController::class),
 ];

@@ -2,6 +2,7 @@
 
 namespace Zephyrisle\FlarumZaiBot\Service\Tool;
 
+use Flarum\Http\UrlGenerator;
 use Flarum\Settings\SettingsRepositoryInterface;
 use GuzzleHttp\Client;
 
@@ -9,7 +10,8 @@ class WebSearchTool implements ToolInterface
 {
     public function __construct(
         protected SettingsRepositoryInterface $settings,
-        protected Client $client
+        protected Client $client,
+        protected UrlGenerator $url
     ) {}
 
     public function getName(): string
@@ -72,6 +74,9 @@ class WebSearchTool implements ToolInterface
         if ($proxy) {
             return rtrim($proxy, '/');
         }
+        if ((bool) $this->settings->get('flarum-zai-bot.jina_use_builtin_proxy', false)) {
+            return $this->url->to('api')->base() . '/zai-bot/jina-proxy?action=search&q=';
+        }
         return 'https://s.jinaai.cn';
     }
 
@@ -81,6 +86,9 @@ class WebSearchTool implements ToolInterface
         if ($proxy) {
             return rtrim($proxy, '/');
         }
+        if ((bool) $this->settings->get('flarum-zai-bot.jina_use_builtin_proxy', false)) {
+            return $this->url->to('api')->base() . '/zai-bot/jina-proxy?action=read&url=';
+        }
         return 'https://r.jinaai.cn';
     }
 
@@ -88,7 +96,7 @@ class WebSearchTool implements ToolInterface
     {
         try {
             $baseUrl = $this->getSearchBaseUrl();
-            $url = $baseUrl . '/' . urlencode($query);
+            $url = str_contains($baseUrl, '?') ? $baseUrl . urlencode($query) : $baseUrl . '/' . urlencode($query);
 
             $response = $this->client->get($url, [
                 'headers' => [
@@ -128,7 +136,7 @@ class WebSearchTool implements ToolInterface
     {
         try {
             $baseUrl = $this->getReaderBaseUrl();
-            $targetUrl = $baseUrl . '/' . $url;
+            $targetUrl = str_contains($baseUrl, '?') ? $baseUrl . $url : $baseUrl . '/' . $url;
 
             $response = $this->client->get($targetUrl, [
                 'headers' => [
