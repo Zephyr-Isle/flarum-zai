@@ -40,7 +40,7 @@ class UserPortrait extends AbstractModel
         $traits = $this->traits ?? [];
         $traits[] = [
             'observation' => $observation,
-            'timestamp' => now()->toDateTimeString(),
+            'timestamp' => \Carbon\Carbon::now()->toDateTimeString(),
         ];
 
         if (count($traits) > 100) {
