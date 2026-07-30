@@ -175,16 +175,7 @@ class AIService
     protected function getApiKeys(): array
     {
         $raw = $this->settings->get('flarum-zai-bot.api_keys', '');
-        $keys = array_filter(array_map('trim', explode(',', $raw)));
-
-        if (empty($keys)) {
-            $single = $this->settings->get('flarum-zai-bot.api_key', '');
-            if ($single) {
-                $keys = [$single];
-            }
-        }
-
-        return $keys ?: [];
+        return array_filter(array_map('trim', explode(',', $raw))) ?: [];
     }
 
     protected function getKeysRotated(): array

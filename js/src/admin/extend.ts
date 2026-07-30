@@ -16,11 +16,6 @@ export default [
             default: '',
         }))
         .setting(() => ({
-            setting: 'flarum-zai-bot.api_key',
-            label: 'API Key (fallback if Keys empty)',
-            type: 'password',
-        }))
-        .setting(() => ({
             setting: 'flarum-zai-bot.model',
             label: 'Model',
             type: 'text',

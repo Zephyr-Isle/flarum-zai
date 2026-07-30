@@ -183,12 +183,7 @@ class GenerateReplyForMessage extends AbstractJob
     protected function getApiKeys(SettingsRepositoryInterface $settings): array
     {
         $raw = $settings->get('flarum-zai-bot.api_keys', '');
-        $keys = array_filter(array_map('trim', explode(',', $raw)));
-        if (empty($keys)) {
-            $single = $settings->get('flarum-zai-bot.api_key', '');
-            if ($single) $keys = [$single];
-        }
-        return $keys ?: [];
+        return array_filter(array_map('trim', explode(',', $raw))) ?: [];
     }
 
     protected function getEmbeddingApiKeys(SettingsRepositoryInterface $settings): array
