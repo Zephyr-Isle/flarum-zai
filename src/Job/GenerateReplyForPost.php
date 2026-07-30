@@ -164,6 +164,7 @@ class GenerateReplyForPost extends AbstractJob
         }
 
         if (!$reply) {
+            error_log('[flarum-zai-bot] GenerateReplyForPost: generateReply returned null. post_id=' . $post->id . ' discussion_id=' . $discussion->id);
             return;
         }
 

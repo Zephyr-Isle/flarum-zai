@@ -150,6 +150,7 @@ class AIService
                 $choice = $body['choices'][0] ?? null;
 
                 if (!$choice) {
+                    error_log('[flarum-zai-bot] generateReply: no choices in response. body=' . json_encode($body));
                     continue;
                 }
 
@@ -162,13 +163,18 @@ class AIService
                 }
 
                 $this->saveLastKeyIndex($apiKey);
+                if ($message['content'] === null || $message['content'] === '') {
+                    error_log('[flarum-zai-bot] generateReply: content is null/empty. full message=' . json_encode($message));
+                }
                 return $message['content'] ?? null;
             } catch (\Exception $e) {
                 $lastError = $e;
+                error_log('[flarum-zai-bot] generateReply failed: ' . $e->getMessage() . ' | model: ' . $model . ' | url: ' . $apiUrl);
                 continue;
             }
         }
 
+        error_log('[flarum-zai-bot] generateReply exhausted all keys. Last error: ' . ($lastError?->getMessage() ?? 'none'));
         return null;
     }
 
@@ -235,11 +241,15 @@ class AIService
                     $this->saveLastKeyIndex($apiKey);
                     return $choice;
                 }
+
+                error_log('[flarum-zai-bot] postChat: no choices. body=' . json_encode($body));
             } catch (\Exception $e) {
+                error_log('[flarum-zai-bot] postChat failed: ' . $e->getMessage() . ' | model: ' . $model);
                 continue;
             }
         }
 
+        error_log('[flarum-zai-bot] postChat exhausted all keys | model: ' . $model);
         return null;
     }
 
@@ -574,6 +584,7 @@ class AIService
         $choice = $this->postChat($messages, $toolDefinitions, $apiUrl, $keys, $model);
 
         if (!$choice) {
+            error_log('[flarum-zai-bot] handleToolCalls: postChat returned null after tool execution');
             return null;
         }
 

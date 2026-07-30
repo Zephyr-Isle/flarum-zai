@@ -151,6 +151,7 @@ class GenerateReplyForMessage extends AbstractJob
         }
 
         if (!$reply) {
+            error_log('[flarum-zai-bot] GenerateReplyForMessage: generateReply returned null. message_id=' . $message->id);
             return;
         }
 
