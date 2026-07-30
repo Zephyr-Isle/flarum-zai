@@ -78,7 +78,7 @@ export default [
         }))
         .setting(() => ({
             setting: 'flarum-zai-bot.jina_proxy_url',
-            label: 'Jina Proxy URL (for regions where Jina is blocked, e.g. https://r.jina.ai mirror)',
+            label: 'Jina Proxy URL (override; defaults to r.jinaai.cn / s.jinaai.cn when optimized)',
             type: 'text',
             default: '',
         }))

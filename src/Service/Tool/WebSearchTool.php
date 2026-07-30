@@ -66,13 +66,13 @@ class WebSearchTool implements ToolInterface
         return $this->searchWeb($query, $maxResults);
     }
 
-    protected function getBaseUrl(): string
+    protected function getSearchBaseUrl(): string
     {
         $proxy = $this->settings->get('flarum-zai-bot.jina_proxy_url', '');
         if ($proxy) {
             return rtrim($proxy, '/');
         }
-        return 'https://s.jina.ai';
+        return 'https://s.jinaai.cn';
     }
 
     protected function getReaderBaseUrl(): string
@@ -81,13 +81,13 @@ class WebSearchTool implements ToolInterface
         if ($proxy) {
             return rtrim($proxy, '/');
         }
-        return 'https://r.jina.ai';
+        return 'https://r.jinaai.cn';
     }
 
     protected function searchWeb(string $query, int $maxResults): string
     {
         try {
-            $baseUrl = $this->getBaseUrl();
+            $baseUrl = $this->getSearchBaseUrl();
             $url = $baseUrl . '/' . urlencode($query);
 
             $response = $this->client->get($url, [
