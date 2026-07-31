@@ -11,6 +11,10 @@ class BotAffinity extends AbstractModel
 
     public $timestamps = true;
 
+    protected $casts = [
+        'last_interaction_at' => 'datetime',
+    ];
+
     public function user()
     {
         return $this->belongsTo(User::class);
