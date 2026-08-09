@@ -10,7 +10,8 @@ An AI-powered bot extension for [Flarum](https://flarum.org) that automatically 
 - Runs via **queue** (`php flarum queue:work`) - non-blocking, scalable
 
 ### AI Integration
-- Self-hosted or OpenAI-compatible API (configure URL, key, model)
+- **Multi-provider with automatic failover**: configure any number of providers (each with its own URL, keys and model) as JSON; if one provider/key fails, the next is tried automatically, and successful endpoints are used round-robin
+- Legacy single-URL settings remain fully supported (fallback when no providers are configured)
 - Full **tool calling** loop - multi-round tool use for complex tasks
 - **Personality presets**: `friendly`, `tsundere`, `loli`, `cool`, or `custom` (raw system prompt)
 
@@ -42,6 +43,8 @@ An AI-powered bot extension for [Flarum](https://flarum.org) that automatically 
 | `get_stickers` | Browse/search stickers by category | `ramon/stickers` |
 | `send_sticker` | Post a sticker in the discussion | `ramon/stickers` |
 | `get_post_likes` | Query likes, like, or unlike a post | `flarum/likes` |
+| `web_search` | Search the web / read a URL (via Jina) | `jina_optimization_mode` enabled |
+| `update_user_portrait` | Record observations and adjust the user's affinity | - |
 
 ### Extension Integrations
 All integrations are **optional** and loaded via `class_exists()` - no hard dependencies.
@@ -68,11 +71,29 @@ Then configure in the admin panel under **ZAI Bot** settings.
 
 ## Configuration
 
-### Required Settings
+### Providers (recommended)
+Configure one or more providers as a JSON array in the `providers` setting. Each entry can have its own URL, keys and model; providers are tried in order, and when one fails the next is used automatically. Keys within a provider also fail over, and all endpoints are used round-robin.
+
+```json
+[
+  {"name": "DeepSeek", "api_url": "https://api.deepseek.com/v1", "api_keys": "sk-a,sk-b", "model": "deepseek-chat"},
+  {"name": "OpenAI",   "api_url": "https://api.openai.com/v1",   "api_keys": "sk-c",         "model": "gpt-4o-mini"}
+]
+```
+
+- `name` (optional): shown in admin test results
+- `api_url` (required): OpenAI-compatible endpoint
+- `api_keys` (required): comma-separated keys with automatic failover
+- `model` (optional): per-provider model; defaults to the global `model` setting
+- `enabled` (optional, default `true`): set `false` to temporarily disable a provider
+
+Embedding requests use the same provider list (with the global `embedding_model`).
+
+### Required Settings (legacy, used only when `providers` is empty)
 | Setting | Key | Description |
 |---------|-----|-------------|
 | API URL | `api_url` | OpenAI-compatible endpoint (default: `https://api.openai.com/v1`) |
-| API Key | `api_key` | Your API key |
+| API Key | `api_keys` | Comma-separated API keys (auto-failover & round-robin) |
 | Model | `model` | Model name (default: `gpt-3.5-turbo`) |
 | Bot Username | `username` | Bot's Flarum username (default: `AIGirl`) |
 
@@ -80,6 +101,7 @@ Then configure in the admin panel under **ZAI Bot** settings.
 | Setting | Key | Default | Description |
 |---------|-----|---------|-------------|
 | Random Reply Chance | `random_reply_chance` | `0` | Auto-reply without mention (%) |
+| Reply Decision Window | `reply_cooldown` | `30` | Within this window after the bot's last reply, the AI reviews the new context and decides on its own whether to reply again (`0` = always reply). Note: within this window each trigger consumes an API call even when the bot stays silent |
 | Personality | `personality` | `friendly` | `friendly`, `tsundere`, `loli`, `cool`, or `custom` |
 | System Prompt | `system_prompt` | - | Raw prompt when personality is `custom` |
 | Bot Display Name | `bot_display_name` | `Yuki` | Name shown to users |
@@ -124,6 +146,25 @@ The AI service (`AIService::generateReply()`) handles:
 ```bash
 cd js && npm install && npm run build
 ```
+
+## Testing
+
+Unit tests cover `AIService`, `MemoryService`, `ProviderService`, both reply jobs, the listeners and the `BotAffinity` model. They run against an in-memory SQLite database, so no database server is required.
+
+> `flarum/messages` is installed as a dev-only dependency so the private-message job tests can exercise the real `DialogMessage` / `Dialog` / `Created` classes. It is **not** a runtime requirement of the extension.
+
+```bash
+composer install
+test
+```
+
+Or directly:
+
+```bash
+vendor/bin/phpunit
+```
+
+> Note: while Flarum 2.x is still in RC, `flarum/core` is required as `^2.0@dev` so the test suite (and standalone installs) can resolve the 2.x branch. Once Flarum 2.0 stable is released, this constraint keeps working unchanged.
 
 ## License
 

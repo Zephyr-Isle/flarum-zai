@@ -25,11 +25,23 @@ class UserPortrait extends AbstractModel
         $portrait = static::where('user_id', $userId)->first();
 
         if (!$portrait) {
+            try {
+                $portrait = new static();
+                $portrait->user_id = $userId;
+                $portrait->summary = '';
+                $portrait->traits = [];
+                $portrait->save();
+            } catch (\Illuminate\Database\QueryException $e) {
+                // 队列并发时另一个任务可能已抢先创建成功（user_id 唯一约束），改为复用现有记录
+                $portrait = static::where('user_id', $userId)->first();
+            }
+        }
+
+        // 极端兜底：插入失败且重查仍为空时，返回一个带 user_id 的未保存实例
+        // （避免通过构造参数赋值触发批量赋值保护 MassAssignmentException）
+        if (!$portrait) {
             $portrait = new static();
             $portrait->user_id = $userId;
-            $portrait->summary = '';
-            $portrait->traits = [];
-            $portrait->save();
         }
 
         return $portrait;

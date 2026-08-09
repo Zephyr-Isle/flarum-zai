@@ -1,36 +1,61 @@
 zephyrisle-flarum-zai-bot:
   admin:
     settings:
-      api_url_label: API URL
-      api_url_help: OpenAI 兼容的 API 地址
+      providers_label: '供应商配置（JSON，多供应商自动回退）'
+      providers_help: '可选的 JSON 数组，可覆盖下方旧版设置。每个供应商可独立配置地址、密钥和模型；按顺序尝试，失败自动回退到下一个。示例：[{"name": "DeepSeek", "api_url": "https://api.deepseek.com/v1", "api_keys": "sk-a,sk-b", "model": "deepseek-chat"}, {"name": "OpenAI", "api_url": "https://api.openai.com/v1", "api_keys": "sk-c", "model": "gpt-4o-mini"}]'
+      api_url_label: 'API 地址（旧版，仅当上方供应商配置为空时使用）'
+      api_url_help: OpenAI 兼容的 API 地址。仅当上方供应商配置为空时使用。
       api_keys_label: 'API 密钥（多个用逗号分隔，自动故障转移）'
-      api_keys_help: 多个密钥自动故障转移和轮询使用
-      api_key_label: 'API 密钥（Keys 为空时的后备）'
+      api_keys_help: 多个密钥自动故障转移和轮询使用。仅当上方供应商配置为空时使用。
       model_label: 模型
       username_label: 机器人用户名
       random_reply_chance_label: '随机回复概率（%）'
-      message_extension_label: '消息扩展（在活跃讨论中回复）'
+      reply_cooldown_label: '回复决策窗口（秒）'
+      reply_cooldown_help: 距上次回复不超过该秒数时，AI 会结合上下文自主决定是否再次回复（必要时可保持沉默）。设为 0 表示总是回复。
       system_prompt_label: 系统提示词
       message_reply_enabled_label: '启用私信 AI 回复（需要 flarum/messages）'
-      personality_label: 性格
       bot_display_name_label: 机器人显示名称
       timezone_label: 时区
+      jina_optimization_mode_label: 'Jina 优化模式（启用 Jina AI 网页搜索）'
+      jina_optimization_mode_help: 启用后将为机器人注册 web_search 工具，可搜索互联网或读取指定 URL。
+      jina_proxy_url_label: 'Jina 代理地址（自定义代理覆盖）'
+      jina_proxy_url_help: 留空使用默认的 s.jinaai.cn / r.jinaai.cn 国内镜像。需先启用 Jina 优化模式。
+      jina_use_builtin_proxy_label: '使用本服务器作为内建 Jina 代理'
+      jina_use_builtin_proxy_help: 请求经由本服务器转发（服务器无法直连 Jina 时使用）。需先启用 Jina 优化模式。
       openweather_key_label: OpenWeather API 密钥
       openweather_city_label: OpenWeather 城市
+      embedding_api_keys_label: 'Embedding API 密钥（多个用逗号分隔）'
+      embedding_api_keys_help: 留空则回退使用主 LLM API 密钥。
       embedding_api_url_label: 'Embedding API 地址（留空使用主 API 地址）'
       embedding_model_label: Embedding 模型
       pgvector_host_label: 'PostgreSQL 主机（用于 pgvector 记忆，留空禁用）'
+      pgvector_host_help: '需要 pgvector 扩展。向量维度须与模型一致（默认 1536）。'
       pgvector_port_label: PostgreSQL 端口
       pgvector_db_label: PostgreSQL 数据库名
       pgvector_user_label: PostgreSQL 用户名
       pgvector_password_label: PostgreSQL 密码
+
+    api_test:
+      title: API 测试
+      description: 测试 LLM 与 Embedding API 的连通性和配置是否正确。
+      test_all: 全部测试
+      test_llm: 测试 LLM
+      test_embedding: 测试 Embedding
+      testing: 测试中...
+      success_llm_provider: 'OK - {name}（{model}）：{reply}'
+      success_embedding_provider: 'OK - {name}（{model}）：{dimensions} 维'
+      failed_provider: '{name} 失败：{error}'
+      failed: '失败：{error}'
 
     affinities:
       title: Bot 好感度
       description: 用户对 AI 机器人的好感度分数。每次互动都会增加分数。
       loading: 加载中...
       refresh: 刷新
-      no_affinities: 暂无语录。
+      no_affinities: 暂无好感度记录。
+      total_records: '共 {total} 条记录'
+      page_prev: 上一页
+      page_next: 下一页
       error: '加载好感度失败：{error}'
       table:
         user: 用户

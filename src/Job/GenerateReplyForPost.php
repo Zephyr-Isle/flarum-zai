@@ -8,23 +8,25 @@ use Flarum\Post\Event\Posted;
 use Flarum\Post\Post;
 use Flarum\Queue\AbstractJob;
 use Flarum\Settings\SettingsRepositoryInterface;
-use Flarum\User\User;
 use Illuminate\Contracts\Events\Dispatcher;
+use Zephyrisle\FlarumZaiBot\Job\Concerns\BuildsBotTools;
+use Zephyrisle\FlarumZaiBot\Job\Concerns\ManagesBotUser;
 use Zephyrisle\FlarumZaiBot\Model\BotAffinity;
 use Zephyrisle\FlarumZaiBot\Service\AIService;
 use Zephyrisle\FlarumZaiBot\Service\MemoryService;
 use Zephyrisle\FlarumZaiBot\Service\PortraitService;
-use Zephyrisle\FlarumZaiBot\Service\Tool\LikeTool;
-use Zephyrisle\FlarumZaiBot\Service\Tool\SearchTool;
-use Zephyrisle\FlarumZaiBot\Service\Tool\SendStickerTool;
-use Zephyrisle\FlarumZaiBot\Service\Tool\StickerTool;
-use Zephyrisle\FlarumZaiBot\Service\Tool\UpdatePortraitTool;
-use Zephyrisle\FlarumZaiBot\Service\Tool\WebSearchTool;
-use Zephyrisle\FlarumZaiBot\Service\Tool\UserInfoTool;
-use Zephyrisle\FlarumZaiBot\Service\Tool\ViewFileTool;
 
 class GenerateReplyForPost extends AbstractJob
 {
+    use BuildsBotTools;
+    use ManagesBotUser;
+
+    /**
+     * 极短的固定防重保险窗口（秒）：仅用于防止队列并发/任务重试导致在同一时刻双发，
+     * 与 AI 的自主回复决策无关。
+     */
+    private const RACE_GUARD_SECONDS = 10;
+
     public int $postId;
 
     public function __construct(int $postId)
@@ -40,10 +42,15 @@ class GenerateReplyForPost extends AbstractJob
             return;
         }
 
+        // 只对普通评论帖子回复，跳过置顶、改名、删除等系统帖子
+        if ($post->type !== 'comment') {
+            return;
+        }
+
         $discussion = $post->discussion;
 
         $botUsername = $settings->get('flarum-zai-bot.username', 'AIGirl');
-        $randomChance = (int) $settings->get('flarum-zai-bot.random_reply_chance', 0);
+        $randomChance = $this->getRandomReplyChance($settings);
 
         $botUser = $this->getBotUser($botUsername);
 
@@ -63,6 +70,15 @@ class GenerateReplyForPost extends AbstractJob
         }
 
         if (!$shouldReply) {
+            return;
+        }
+
+        // 查询机器人在该讨论中的最近一次回复（同时用于防重保险与自主决策上下文）
+        $lastBotReply = $this->getLastBotReply($discussion->id, $botUser->id);
+
+        // 极短的固定防重保险窗口：防止队列并发/任务重试在同一时刻双发（与 AI 自主决策无关）
+        if ($lastBotReply && $lastBotReply->created_at
+            && (int) Carbon::now()->diffInSeconds($lastBotReply->created_at) < self::RACE_GUARD_SECONDS) {
             return;
         }
 
@@ -91,6 +107,21 @@ class GenerateReplyForPost extends AbstractJob
             ];
         }
 
+        // 计算“最近回复”上下文：如果机器人在 reply_cooldown 窗口内刚回复过，
+        // 交由 AI 结合上下文自主决定是否再次回复（不再用固定时间强制跳过）。
+        $cooldownSeconds = $this->getReplyCooldownSeconds($settings);
+        $repliedRecently = false;
+        $repliedRecentlySecondsAgo = 0;
+        $lastBotReplyExcerpt = '';
+        if ($cooldownSeconds > 0 && $lastBotReply && $lastBotReply->created_at) {
+            // 钳制为 0，防止时钟偏移导致出现“-5秒前”这类异常文案
+            $repliedRecentlySecondsAgo = max(0, (int) Carbon::now()->diffInSeconds($lastBotReply->created_at));
+            if ($repliedRecentlySecondsAgo <= $cooldownSeconds) {
+                $repliedRecently = true;
+                $lastBotReplyExcerpt = mb_substr(strip_tags((string) $lastBotReply->content), 0, 200);
+            }
+        }
+
         $affinity = null;
         $portraitSummary = null;
         $memories = [];
@@ -108,8 +139,7 @@ class GenerateReplyForPost extends AbstractJob
             try {
                 $memoryService = resolve(MemoryService::class);
                 if ($memoryService->isAvailable()) {
-                    $keys = $this->getApiKeys($settings);
-                    $embedding = $memoryService->generateEmbedding($content, $keys);
+                    $embedding = $memoryService->generateEmbedding($content);
                     if ($embedding) {
                         $memories = $memoryService->searchMemories($author->id, $embedding, 5);
                     }
@@ -130,6 +160,9 @@ class GenerateReplyForPost extends AbstractJob
             'portrait_summary' => $portraitSummary,
             'memories' => $memories,
             'conversation_history' => $history,
+            'replied_recently' => $repliedRecently,
+            'replied_recently_seconds_ago' => $repliedRecentlySecondsAgo,
+            'last_bot_reply_excerpt' => $lastBotReplyExcerpt,
         ];
 
         if ($author) {
@@ -154,13 +187,20 @@ class GenerateReplyForPost extends AbstractJob
             }
         }
 
-        $portraitTool = new UpdatePortraitTool(resolve(PortraitService::class), $userId);
-        $tools = [new UserInfoTool(), new SearchTool(), new ViewFileTool(), new StickerTool(), new SendStickerTool(), new LikeTool($botUser->id), $portraitTool, resolve(WebSearchTool::class)];
+        $tools = $this->buildBotTools($botUser->id, $userId, $settings);
 
         $reply = $ai->generateReply($content, $context, $tools);
 
         if ($reply && $userId) {
+            // 先解析秘密评估：即使 AI 决定保持沉默，也允许记录观察/调整好感度
             $reply = $ai->parseSecretEval($reply, $userId);
+        }
+
+        // AI 自主决定保持沉默（回复中包含跳过标记）。
+        // 注意：标记检测为包含匹配——宁可误吞一条回复，也不把标记泄漏给用户。
+        if ($reply && $this->shouldSkipReply($reply)) {
+            error_log('[flarum-zai-bot] GenerateReplyForPost: AI decided to stay silent. post_id=' . $post->id . ' discussion_id=' . $discussion->id);
+            return;
         }
 
         if (!$reply) {
@@ -172,8 +212,7 @@ class GenerateReplyForPost extends AbstractJob
             try {
                 $memoryService = resolve(MemoryService::class);
                 if ($memoryService->isAvailable()) {
-                    $embeddingKeys = $this->getEmbeddingApiKeys($settings);
-                    $embedding = $memoryService->generateEmbedding(strip_tags($reply), $embeddingKeys);
+                    $embedding = $memoryService->generateEmbedding(strip_tags($reply));
                     if ($embedding) {
                         $memoryService->storeMemory($userId, "用户：{$context['display_name']} 在讨论「{$discussion->title}」中发帖：" . strip_tags($content) . "\nAI回复：" . strip_tags($reply), $embedding);
                     }
@@ -189,42 +228,45 @@ class GenerateReplyForPost extends AbstractJob
         $botPost->setContentAttribute($reply, $botUser);
         $botPost->save();
 
-        $events->dispatch(new Posted($botPost));
-    }
-
-    protected function getApiKeys(SettingsRepositoryInterface $settings): array
-    {
-        $raw = $settings->get('flarum-zai-bot.api_keys', '');
-        return array_filter(array_map('trim', explode(',', $raw))) ?: [];
-    }
-
-    protected function getEmbeddingApiKeys(SettingsRepositoryInterface $settings): array
-    {
-        $raw = $settings->get('flarum-zai-bot.embedding_api_keys', '');
-        $keys = array_filter(array_map('trim', explode(',', $raw)));
-        if (!empty($keys)) {
-            return $keys;
+        // 帖子已持久化，任何同步监听器（如 realtime 推送）的异常/错误都不应让任务失败重试，
+        // 否则重试会重新生成回复并产生重复帖子。
+        try {
+            $events->dispatch(new Posted($botPost));
+        } catch (\Throwable $e) {
+            error_log('[flarum-zai-bot] GenerateReplyForPost: Posted event dispatch failed: ' . $e->getMessage());
         }
-        return $this->getApiKeys($settings);
     }
 
-    protected function getBotUser(string $botUsername): User
+    /**
+     * 最近回复判定窗口（秒）。窗口内 AI 会收到“最近回复”上下文并自主决定是否再次回复。
+     * 0 表示不提供该上下文（总是回复）。
+     */
+    protected function getReplyCooldownSeconds(SettingsRepositoryInterface $settings): int
     {
-        $botUser = User::where('username', $botUsername)->first();
+        return max(0, (int) $settings->get('flarum-zai-bot.reply_cooldown', 30));
+    }
 
-        if (!$botUser) {
-            $botUser = new User();
-            $botUser->username = $botUsername;
-            $botUser->email = $botUsername . '@bot.local';
-            $botUser->password = \Illuminate\Support\Str::random(40);
-            $botUser->is_email_confirmed = true;
-            $botUser->save();
-            $botUser->groups()->sync([1]);
-        }
+    /**
+     * 随机回复概率（%），钳制在 0-100 之间，防止配置异常导致每次都回复。
+     */
+    protected function getRandomReplyChance(SettingsRepositoryInterface $settings): int
+    {
+        return max(0, min(100, (int) $settings->get('flarum-zai-bot.random_reply_chance', 0)));
+    }
 
-        $botUser->last_seen_at = Carbon::now();
-        $botUser->save();
+    /**
+     * 判断 AI 是否通过跳过标记决定保持沉默。
+     */
+    protected function shouldSkipReply(string $reply): bool
+    {
+        return str_contains($reply, AIService::SKIP_MARKER);
+    }
 
-        return $botUser;
+    protected function getLastBotReply(int $discussionId, int $botUserId): ?CommentPost
+    {
+        return CommentPost::where('discussion_id', $discussionId)
+            ->where('user_id', $botUserId)
+            ->orderBy('id', 'desc')
+            ->first();
     }
 }

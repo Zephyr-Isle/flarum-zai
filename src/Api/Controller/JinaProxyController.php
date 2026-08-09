@@ -52,8 +52,12 @@ class JinaProxyController implements RequestHandlerInterface
     protected function proxyRead(string $url): JsonResponse
     {
         try {
+            // PHP 解析 query 参数时已解码一次，这里直接使用，避免二次解码损坏 URL
             $response = $this->client->get('https://r.jinaai.cn/' . $url, [
-                'headers' => ['Accept' => 'application/json'],
+                'headers' => [
+                    'Accept' => 'application/json',
+                    'X-Return-Format' => 'markdown',
+                ],
                 'timeout' => 30,
             ]);
             $body = json_decode($response->getBody(), true);

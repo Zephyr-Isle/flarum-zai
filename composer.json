@@ -4,9 +4,22 @@
     "type": "flarum-extension",
     "license": "MIT",
     "require": {
-        "flarum/core": "^2.0",
+        "flarum/core": "^2.0@dev",
         "chinese-holidays/holiday-checker": "^1.0",
         "ext-pdo": "*"
+    },
+    "require-dev": {
+        "mockery/mockery": "^1.6",
+        "phpunit/phpunit": "^10.5",
+        "flarum/messages": "^2.0@dev"
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Zephyrisle\\FlarumZaiBot\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit"
     },
     "suggest": {
         "flarum/messages": "Enables AI replies in private messages.",
@@ -27,6 +40,9 @@
     "support": {
         "source": "https://github.com/Zephyr-Isle/flarum-zai-bot",
         "issues": "https://github.com/Zephyr-Isle/flarum-zai-bot/issues"
+    },
+    "config": {
+        "prefer-stable": true
     },
     "autoload": {
         "psr-4": {

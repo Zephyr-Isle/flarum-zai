@@ -12,7 +12,8 @@ class MemoryService
 
     public function __construct(
         protected SettingsRepositoryInterface $settings,
-        protected Client $client
+        protected Client $client,
+        protected ProviderService $providers
     ) {}
 
     public function isAvailable(): bool
@@ -20,18 +21,25 @@ class MemoryService
         return $this->getPdo() !== null;
     }
 
-    public function generateEmbedding(string $text, array $apiKeys): ?array
+    public function generateEmbedding(string $text): ?array
     {
-        $apiUrl = $this->settings->get('flarum-zai-bot.embedding_api_url');
-        if (!$apiUrl) {
-            $apiUrl = $this->settings->get('flarum-zai-bot.api_url', 'https://api.openai.com/v1');
+        $endpoints = $this->providers->embeddingEndpoints();
+
+        if (empty($endpoints)) {
+            return null;
         }
+
         $model = $this->settings->get('flarum-zai-bot.embedding_model', 'text-embedding-3-small');
 
-        $lastError = null;
-        foreach ($apiKeys as $key) {
+        // 轮询起始索引：多个端点间负载均衡（上一个成功端点之后开始）
+        $startIndex = $this->providers->nextStartIndex('flarum-zai-bot.last_embedding_key_index', count($endpoints));
+        $rotatedEndpoints = $this->providers->rotateEndpoints($endpoints, $startIndex);
+
+        foreach ($rotatedEndpoints as $endpoint) {
+            $key = $endpoint['api_key'];
+
             try {
-                $response = $this->client->post(rtrim($apiUrl, '/') . '/embeddings', [
+                $response = $this->client->post(rtrim($endpoint['api_url'], '/') . '/embeddings', [
                     'headers' => [
                         'Authorization' => 'Bearer ' . $key,
                         'Content-Type' => 'application/json',
@@ -48,15 +56,16 @@ class MemoryService
                 $embedding = $body['data'][0]['embedding'] ?? null;
 
                 if ($embedding) {
+                    $this->providers->saveIndex('flarum-zai-bot.last_embedding_key_index', $endpoints, $endpoint);
                     return $embedding;
                 }
 
-                return null;
+                error_log('[flarum-zai-bot] generateEmbedding: empty embedding returned for endpoint. body=' . json_encode($body));
+                continue;
             } catch (\Exception $e) {
                 if ($this->isKeyDepleted($e)) {
-                    $this->removeApiKey($key);
+                    $this->providers->removeApiKey($key);
                 }
-                $lastError = $e;
                 continue;
             }
         }
@@ -107,6 +116,7 @@ class MemoryService
             $stmt->execute([$userId, $content, $vectorStr]);
             return true;
         } catch (\Exception $e) {
+            error_log('[flarum-zai-bot] storeMemory failed (check embedding dimension matches vector(1536)): ' . $e->getMessage());
             return false;
         }
     }
@@ -155,19 +165,5 @@ class MemoryService
         return false;
     }
 
-    protected function removeApiKey(string $key): void
-    {
-        $raw = $this->settings->get('flarum-zai-bot.embedding_api_keys', '');
-        $keys = array_filter(array_map('trim', explode(',', $raw)));
-        if (in_array($key, $keys)) {
-            $keys = array_values(array_filter($keys, fn($k) => $k !== $key));
-            $this->settings->set('flarum-zai-bot.embedding_api_keys', implode(',', $keys));
-            return;
-        }
-
-        $raw = $this->settings->get('flarum-zai-bot.api_keys', '');
-        $keys = array_filter(array_map('trim', explode(',', $raw)));
-        $keys = array_values(array_filter($keys, fn($k) => $k !== $key));
-        $this->settings->set('flarum-zai-bot.api_keys', implode(',', $keys));
-    }
 }
+

@@ -44,6 +44,10 @@ class LikeTool implements ToolInterface
 
     public function execute(array $args): string
     {
+        if (!class_exists(\Flarum\Likes\Event\PostWasLiked::class)) {
+            return '未安装 flarum/likes 扩展。';
+        }
+
         $postId = (int) ($args['post_id'] ?? 0);
         $action = $args['action'] ?? 'query';
 

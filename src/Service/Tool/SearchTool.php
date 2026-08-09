@@ -44,9 +44,12 @@ class SearchTool implements ToolInterface
             return '请提供搜索关键词。';
         }
 
+        // 转义 LIKE 通配符，避免 % _ \ 被 AI 生成的关键词或用户输入意外扩大匹配范围
+        $like = $this->escapeLike($query);
+
         $results = [];
 
-        $discussions = Discussion::where('title', 'like', "%{$query}%")
+        $discussions = Discussion::where('title', 'like', "%{$like}%")
             ->where('is_private', false)
             ->orderBy('last_posted_at', 'desc')
             ->take($limit)
@@ -57,7 +60,7 @@ class SearchTool implements ToolInterface
             $results[] = "[讨论] {$disc->title}（作者：{$author}，回复数：{$disc->comment_count}）";
         }
 
-        $posts = Post::where('content', 'like', "%{$query}%")
+        $posts = Post::where('content', 'like', "%{$like}%")
             ->whereHas('discussion', function ($q) {
                 $q->where('is_private', false);
             })
@@ -82,5 +85,13 @@ class SearchTool implements ToolInterface
         }
 
         return trim($output);
+    }
+
+    /**
+     * 转义 LIKE 模式中的通配符（% _ 与转义符本身），默认 ESCAPE 字符为反斜杠。
+     */
+    protected function escapeLike(string $query): string
+    {
+        return addcslashes($query, '%_\\');
     }
 }

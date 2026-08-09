@@ -62,10 +62,40 @@ class WebSearchTool implements ToolInterface
         }
 
         if ($url) {
+            // 只允许 http/https，避免模型被诱导读取 file:// 等本地协议
+            if (!$this->isValidTargetUrl($url)) {
+                return "无法读取该 URL：仅支持 http/https 协议的链接。";
+            }
+
             return $this->readUrl($url);
         }
 
         return $this->searchWeb($query, $maxResults);
+    }
+
+    /**
+     * 校验目标 URL：仅允许 http/https 且必须包含主机名。
+     * 必须在 parse_url 之前检查原始字符串，因为 parse_url() 会改变畸形输入：
+     * - 换行等控制字符会被剥离/改写（"https://exa\nmple.com" 解析后 host 变成 "exa_mple.com"）
+     * - 反斜杠会被解析到 user 部分（"https://example.com\@evil.com" 的 host 变成 "evil.com"），
+     *   合法的 http/https URL 中反斜杠必须百分号编码（%5C），出现即视为畸形输入
+     * 原始串检查覆盖了所有空白/控制字符，因此解析后无需再检查 host。
+     * 这是纵深防御——实际抓取由 Jina（或自定义代理）执行。
+     */
+    protected function isValidTargetUrl(string $url): bool
+    {
+        // 原始 URL 不允许空白/控制字符（正则）或反斜杠（str_contains，避免转义歧义）
+        if (preg_match('/[\x00-\x20\x7f]/', $url) || str_contains($url, '\\')) {
+            return false;
+        }
+
+        $parts = parse_url($url);
+
+        if (!$parts || empty($parts['scheme']) || empty($parts['host'])) {
+            return false;
+        }
+
+        return in_array(strtolower($parts['scheme']), ['http', 'https'], true);
     }
 
     protected function getSearchBaseUrl(): string
@@ -136,7 +166,8 @@ class WebSearchTool implements ToolInterface
     {
         try {
             $baseUrl = $this->getReaderBaseUrl();
-            $targetUrl = str_contains($baseUrl, '?') ? $baseUrl . $url : $baseUrl . '/' . $url;
+            // 使用内建代理时 URL 作为 query 参数传递，必须编码（否则 & 等字符会破坏参数）
+            $targetUrl = str_contains($baseUrl, '?') ? $baseUrl . rawurlencode($url) : $baseUrl . '/' . $url;
 
             $response = $this->client->get($targetUrl, [
                 'headers' => [

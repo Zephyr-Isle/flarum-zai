@@ -26,7 +26,11 @@ return [
         ->default('flarum-zai-bot.bot_display_name', 'Yuki')
         ->default('flarum-zai-bot.timezone', 'Asia/Shanghai')
         ->default('flarum-zai-bot.openweather_city', 'Beijing')
-        ->default('flarum-zai-bot.jina_optimization_mode', false),
+        ->default('flarum-zai-bot.jina_optimization_mode', false)
+        ->default('flarum-zai-bot.jina_use_builtin_proxy', false)
+        ->default('flarum-zai-bot.message_reply_enabled', false)
+        ->default('flarum-zai-bot.random_reply_chance', 0)
+        ->default('flarum-zai-bot.reply_cooldown', 30),
 
     (new Extend\Model(\Zephyrisle\FlarumZaiBot\Model\BotAffinity::class)),
 

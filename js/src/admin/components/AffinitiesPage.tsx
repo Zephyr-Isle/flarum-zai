@@ -2,7 +2,10 @@ import app from 'flarum/admin/app';
 import ExtensionPage from 'flarum/admin/components/ExtensionPage';
 
 export default class AffinitiesPage extends ExtensionPage {
-    affinities: any[] | null = null;
+    affinities: any[] = [];
+    total = 0;
+    page = 1;
+    limit = 20;
     loading = true;
     error: string | null = null;
     testResults: any = {};
@@ -14,6 +17,7 @@ export default class AffinitiesPage extends ExtensionPage {
     }
 
     testApi(type: string) {
+        if (this.testing) return;
         this.testing = type;
         this.testResults = {};
         m.redraw();
@@ -29,13 +33,13 @@ export default class AffinitiesPage extends ExtensionPage {
                 m.redraw();
             })
             .catch((e: any) => {
-                this.testResults = { error: e.statusText || e.message || 'Request failed' };
+                this.testResults = { requestError: e.statusText || e.message || 'Request failed' };
                 this.testing = null;
                 m.redraw();
             });
     }
 
-    load() {
+    load(page = 1) {
         this.loading = true;
         this.error = null;
         m.redraw();
@@ -43,9 +47,12 @@ export default class AffinitiesPage extends ExtensionPage {
         app.request({
             method: 'GET',
             url: app.forum.attribute('apiUrl') + '/zai-bot/affinities',
+            params: { page, limit: this.limit },
         })
             .then((data: any) => {
-                this.affinities = data;
+                this.affinities = data.items || [];
+                this.total = data.total || 0;
+                this.page = data.page || 1;
                 this.loading = false;
                 m.redraw();
             })
@@ -56,43 +63,83 @@ export default class AffinitiesPage extends ExtensionPage {
             });
     }
 
-    renderTestResult(result: any): any {
+    totalPages(): number {
+        return Math.max(1, Math.ceil(this.total / this.limit));
+    }
+
+    renderPagination(): any {
+        const totalPages = this.totalPages();
+        const canPrev = this.page > 1;
+        const canNext = this.page < totalPages;
+
+        return m('div', { className: 'affinity-pagination' }, [
+            m('button', {
+                className: 'Button Button--secondary' + (canPrev ? '' : ' disabled'),
+                disabled: !canPrev || this.loading,
+                title: app.translator.trans('zephyrisle-flarum-zai-bot.admin.affinities.page_prev'),
+                'aria-label': app.translator.trans('zephyrisle-flarum-zai-bot.admin.affinities.page_prev'),
+                onclick: () => this.load(this.page - 1),
+            }, '‹'),
+            m('span', { className: 'affinity-page-info' }, this.page + ' / ' + totalPages),
+            m('button', {
+                className: 'Button Button--secondary' + (canNext ? '' : ' disabled'),
+                disabled: !canNext || this.loading,
+                title: app.translator.trans('zephyrisle-flarum-zai-bot.admin.affinities.page_next'),
+                'aria-label': app.translator.trans('zephyrisle-flarum-zai-bot.admin.affinities.page_next'),
+                onclick: () => this.load(this.page + 1),
+            }, '›'),
+        ]);
+    }
+
+    renderTestResult(key: string, result: any): any {
         if (!result) return null;
-        if (result.success) {
-            const detail = result.reply ? `Reply: ${result.reply}` : `Dimensions: ${result.dimensions}`;
-            return m('span', { style: 'color:#2e7d32;font-size:12px' }, `OK - ${detail}`);
+
+        // 无任何已配置端点
+        if (!result.success && (!result.items || result.items.length === 0)) {
+            return m('span', { className: 'ZaiBot-test-result ZaiBot-test-result--fail' },
+                app.translator.trans('zephyrisle-flarum-zai-bot.admin.api_test.failed', { error: result.error || 'Unknown error' }));
         }
-        return m('span', { style: 'color:#c62828;font-size:12px' }, `Failed: ${result.error}`);
+
+        const t = (k: string, p?: any) => app.translator.trans('zephyrisle-flarum-zai-bot.admin.api_test.' + k, p);
+
+        return m('div', { className: 'ZaiBot-test-providers' }, (result.items || []).map((item: any) => {
+            if (item.success) {
+                const detail = key === 'llm'
+                    ? t('success_llm_provider', { name: item.name, model: item.model, reply: item.reply })
+                    : t('success_embedding_provider', { name: item.name, model: item.model, dimensions: item.dimensions });
+                return m('div', { className: 'ZaiBot-test-result ZaiBot-test-result--ok' }, detail);
+            }
+
+            return m('div', { className: 'ZaiBot-test-result ZaiBot-test-result--fail' },
+                t('failed_provider', { name: item.name, error: item.error || 'Unknown error' }));
+        }));
     }
 
     content() {
-        const testSection = m('div', { style: 'margin-bottom:24px;padding:16px;background:#f6f9fc;border-radius:8px' }, [
-            m('h3', { style: 'margin:0 0 8px' }, 'API Test'),
-            m('div', { style: 'display:flex;gap:8px;align-items:center' }, [
-                m('button', {
-                    className: 'Button' + (this.testing === 'all' ? ' Button--loading' : ''),
-                    onclick: () => this.testApi('all'),
-                    disabled: !!this.testing,
-                }, 'Test All'),
-                m('button', {
-                    className: 'Button' + (this.testing === 'llm' ? ' Button--loading' : ''),
-                    onclick: () => this.testApi('llm'),
-                    disabled: !!this.testing,
-                }, 'Test LLM'),
-                m('button', {
-                    className: 'Button' + (this.testing === 'embedding' ? ' Button--loading' : ''),
-                    onclick: () => this.testApi('embedding'),
-                    disabled: !!this.testing,
-                }, 'Test Embedding'),
-                this.testing ? m('span', ' Testing...') : null,
+        const t = (key: string, params?: any) => app.translator.trans('zephyrisle-flarum-zai-bot.admin.api_test.' + key, params);
+
+        const testButton = (type: string, label: string) => m('button', {
+            className: 'Button' + (this.testing === type ? ' Button--loading' : ''),
+            onclick: () => this.testApi(type),
+            disabled: !!this.testing,
+        }, label);
+
+        const testSection = m('div', { className: 'ZaiBot-test' }, [
+            m('h3', { className: 'ZaiBot-test-title' }, t('title')),
+            m('p', { className: 'ZaiBot-test-desc' }, t('description')),
+            m('div', { className: 'ZaiBot-test-actions' }, [
+                testButton('all', t('test_all')),
+                testButton('llm', t('test_llm')),
+                testButton('embedding', t('test_embedding')),
+                this.testing ? m('span', { className: 'ZaiBot-test-spinner' }, t('testing')) : null,
             ]),
-            this.testResults.llm ? m('div', { style: 'margin-top:8px' }, [
-                m('strong', 'LLM: '), this.renderTestResult(this.testResults.llm),
+            this.testResults.llm ? m('div', { className: 'ZaiBot-test-row' }, [
+                m('strong', 'LLM: '), this.renderTestResult('llm', this.testResults.llm),
             ]) : null,
-            this.testResults.embedding ? m('div', { style: 'margin-top:4px' }, [
-                m('strong', 'Embedding: '), this.renderTestResult(this.testResults.embedding),
+            this.testResults.embedding ? m('div', { className: 'ZaiBot-test-row' }, [
+                m('strong', 'Embedding: '), this.renderTestResult('embedding', this.testResults.embedding),
             ]) : null,
-            this.testResults.error ? m('div', { style: 'margin-top:8px;color:#c62828' }, this.testResults.error) : null,
+            this.testResults.requestError ? m('div', { className: 'ZaiBot-test-row ZaiBot-test-result--fail' }, this.testResults.requestError) : null,
         ]);
 
         return [
@@ -101,11 +148,21 @@ export default class AffinitiesPage extends ExtensionPage {
             m('div', { className: 'ZaiBot-affinities' }, [
                 m('div', { className: 'affinity-header' }, [
                     m('h2', app.translator.trans('zephyrisle-flarum-zai-bot.admin.affinities.title')),
-                    this.loading
-                        ? m('span', { className: 'affinity-loading' }, app.translator.trans('zephyrisle-flarum-zai-bot.admin.affinities.loading'))
-                        : m('button', { className: 'Button Button--refresh', onclick: () => this.load() }, app.translator.trans('zephyrisle-flarum-zai-bot.admin.affinities.refresh')),
+                    m('div', { className: 'affinity-header-actions' }, [
+                        !this.loading && this.total > 0
+                            ? m('span', { className: 'affinity-total' }, app.translator.trans('zephyrisle-flarum-zai-bot.admin.affinities.total_records', { total: this.total }))
+                            : null,
+                        m('button', {
+                            className: 'Button Button--refresh' + (this.loading ? ' Button--loading' : ''),
+                            disabled: this.loading,
+                            onclick: () => this.load(1),
+                        }, app.translator.trans('zephyrisle-flarum-zai-bot.admin.affinities.refresh')),
+                    ]),
                 ]),
                 m('p', { className: 'affinity-summary' }, app.translator.trans('zephyrisle-flarum-zai-bot.admin.affinities.description')),
+                this.loading && this.affinities.length === 0
+                    ? m('div', { className: 'affinity-loading' }, app.translator.trans('zephyrisle-flarum-zai-bot.admin.affinities.loading'))
+                    : null,
                 this.error
                     ? m('div', { className: 'Alert Alert--error' }, app.translator.trans('zephyrisle-flarum-zai-bot.admin.affinities.error', { error: this.error }))
                     : this.renderTable(),
@@ -114,7 +171,11 @@ export default class AffinitiesPage extends ExtensionPage {
     }
 
     renderTable() {
-        if (!this.affinities || this.affinities.length === 0) {
+        if (this.loading && this.affinities.length === 0) {
+            return null;
+        }
+
+        if (this.affinities.length === 0) {
             return m('div', { className: 'affinity-empty' }, app.translator.trans('zephyrisle-flarum-zai-bot.admin.affinities.no_affinities'));
         }
 
@@ -130,18 +191,20 @@ export default class AffinitiesPage extends ExtensionPage {
                 ]),
                 m('tbody', this.affinities.map((aff: any) => this.renderRow(aff))),
             ]),
+            this.renderPagination(),
         ]);
     }
 
     renderRow(aff: any) {
         const scoreClass = aff.total_score >= 40 ? 'high' : aff.total_score >= 0 ? 'medium' : 'low';
+        const scoreLabel = aff.total_score > 0 ? '+' + aff.total_score : String(aff.total_score);
         return m('tr', [
             m('td', { className: 'affinity-user' }, [
                 aff.display_name,
                 ' ',
                 m('small', '@' + aff.username),
             ]),
-            m('td', { className: 'affinity-score ' + scoreClass }, String(aff.total_score)),
+            m('td', { className: 'affinity-score ' + scoreClass }, scoreLabel),
             m('td', String(aff.interaction_count)),
             m('td', aff.last_interaction_at || '-'),
         ]);

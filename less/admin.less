@@ -1,9 +1,91 @@
+.ZaiBot-test {
+    margin-bottom: 24px;
+    padding: 16px;
+    background: #f6f9fc;
+    border: 1px solid #e6ecf2;
+    border-radius: 8px;
+
+    .ZaiBot-test-title {
+        margin: 0 0 4px;
+        font-size: 15px;
+    }
+
+    .ZaiBot-test-desc {
+        margin: 0 0 12px;
+        color: #7c7c7c;
+        font-size: 12px;
+    }
+
+    .ZaiBot-test-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .ZaiBot-test-spinner {
+        font-size: 12px;
+        color: #667c99;
+    }
+
+    .ZaiBot-test-row {
+        margin-top: 8px;
+        font-size: 12px;
+
+        strong {
+            margin-right: 4px;
+        }
+    }
+
+    .ZaiBot-test-result {
+        &--ok {
+            color: #2e7d32;
+        }
+
+        &--fail {
+            color: #c62828;
+        }
+    }
+}
+
 .ZaiBot-affinities {
     .affinity-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
         margin-bottom: 12px;
+    }
+
+    .affinity-header-actions {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .affinity-total {
+        font-size: 12px;
+        color: #7c7c7c;
+    }
+
+    .affinity-pagination {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 12px;
+        padding: 12px;
+        border-top: 1px solid #f0f4f8;
+
+        .Button {
+            min-width: 36px;
+            padding: 4px 0;
+            font-size: 16px;
+            line-height: 1;
+        }
+
+        .affinity-page-info {
+            font-size: 13px;
+            color: #667c99;
+        }
     }
 
     .affinity-summary {
@@ -107,12 +189,49 @@
             color: #8899b0;
         }
 
+        .affinity-total {
+            color: #8899b0;
+        }
+
+        .affinity-pagination {
+            border-top-color: #222;
+
+            .affinity-page-info {
+                color: #8899b0;
+            }
+        }
+
         .affinity-empty {
             color: #667;
         }
 
         .affinity-user small {
             color: #667;
+        }
+    }
+}
+
+@media (prefers-color-scheme: dark) {
+    .ZaiBot-test {
+        background: #16213e;
+        border-color: #2a3a5a;
+
+        .ZaiBot-test-desc {
+            color: #8899b0;
+        }
+
+        .ZaiBot-test-spinner {
+            color: #8899b0;
+        }
+
+        .ZaiBot-test-result {
+            &--ok {
+                color: #81c784;
+            }
+
+            &--fail {
+                color: #ef9a9a;
+            }
         }
     }
 }

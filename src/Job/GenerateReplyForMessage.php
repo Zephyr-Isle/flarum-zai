@@ -2,26 +2,23 @@
 
 namespace Zephyrisle\FlarumZaiBot\Job;
 
-use Carbon\Carbon;
 use Flarum\Messages\DialogMessage;
+use Flarum\Messages\DialogMessage\Event\Created;
 use Flarum\Queue\AbstractJob;
 use Flarum\Settings\SettingsRepositoryInterface;
-use Flarum\User\User;
+use Illuminate\Contracts\Events\Dispatcher;
+use Zephyrisle\FlarumZaiBot\Job\Concerns\BuildsBotTools;
+use Zephyrisle\FlarumZaiBot\Job\Concerns\ManagesBotUser;
 use Zephyrisle\FlarumZaiBot\Model\BotAffinity;
 use Zephyrisle\FlarumZaiBot\Service\AIService;
 use Zephyrisle\FlarumZaiBot\Service\MemoryService;
 use Zephyrisle\FlarumZaiBot\Service\PortraitService;
-use Zephyrisle\FlarumZaiBot\Service\Tool\LikeTool;
-use Zephyrisle\FlarumZaiBot\Service\Tool\SearchTool;
-use Zephyrisle\FlarumZaiBot\Service\Tool\SendStickerTool;
-use Zephyrisle\FlarumZaiBot\Service\Tool\StickerTool;
-use Zephyrisle\FlarumZaiBot\Service\Tool\UpdatePortraitTool;
-use Zephyrisle\FlarumZaiBot\Service\Tool\WebSearchTool;
-use Zephyrisle\FlarumZaiBot\Service\Tool\UserInfoTool;
-use Zephyrisle\FlarumZaiBot\Service\Tool\ViewFileTool;
 
 class GenerateReplyForMessage extends AbstractJob
 {
+    use BuildsBotTools;
+    use ManagesBotUser;
+
     public int $messageId;
 
     public function __construct(int $messageId)
@@ -29,7 +26,7 @@ class GenerateReplyForMessage extends AbstractJob
         $this->messageId = $messageId;
     }
 
-    public function handle(AIService $ai, SettingsRepositoryInterface $settings): void
+    public function handle(AIService $ai, SettingsRepositoryInterface $settings, Dispatcher $events): void
     {
         $message = DialogMessage::find($this->messageId);
 
@@ -97,8 +94,7 @@ class GenerateReplyForMessage extends AbstractJob
             try {
                 $memoryService = resolve(MemoryService::class);
                 if ($memoryService->isAvailable()) {
-                    $keys = $this->getApiKeys($settings);
-                    $embedding = $memoryService->generateEmbedding($message->content, $keys);
+                    $embedding = $memoryService->generateEmbedding($message->content);
                     if ($embedding) {
                         $memories = $memoryService->searchMemories($author->id, $embedding, 5);
                     }
@@ -141,8 +137,7 @@ class GenerateReplyForMessage extends AbstractJob
             }
         }
 
-        $portraitTool = new UpdatePortraitTool(resolve(PortraitService::class), $userId);
-        $tools = [new UserInfoTool(), new SearchTool(), new ViewFileTool(), new StickerTool(), new SendStickerTool(), new LikeTool($botUser->id), $portraitTool, resolve(WebSearchTool::class)];
+        $tools = $this->buildBotTools($botUser->id, $userId, $settings);
 
         $reply = $ai->generateReply($message->content, $context, $tools);
 
@@ -159,8 +154,7 @@ class GenerateReplyForMessage extends AbstractJob
             try {
                 $memoryService = resolve(MemoryService::class);
                 if ($memoryService->isAvailable()) {
-                    $embeddingKeys = $this->getEmbeddingApiKeys($settings);
-                    $embedding = $memoryService->generateEmbedding($message->content . "\n" . strip_tags($reply), $embeddingKeys);
+                    $embedding = $memoryService->generateEmbedding($message->content . "\n" . strip_tags($reply));
                     if ($embedding) {
                         $memoryService->storeMemory($userId, "私信对话：{$message->content}\nAI回复：" . strip_tags($reply), $embedding);
                     }
@@ -172,48 +166,24 @@ class GenerateReplyForMessage extends AbstractJob
         $botMessage = new DialogMessage();
         $botMessage->dialog_id = $dialog->id;
         $botMessage->user_id = $botUser->id;
-        $botMessage->content = $reply;
+        // 显式传入 bot 作为格式化 actor，与论坛 Job 的 setContentAttribute($reply, $botUser)
+        // 保持一致，避免 content 赋值时触发 $this->user 的额外查询且 actor 为 null。
+        $botMessage->setContentAttribute($reply, $botUser);
         $botMessage->save();
 
         $botMessage->refresh();
 
         $dialog->setLastMessage($botMessage);
         $dialog->save();
-    }
 
-    protected function getApiKeys(SettingsRepositoryInterface $settings): array
-    {
-        $raw = $settings->get('flarum-zai-bot.api_keys', '');
-        return array_filter(array_map('trim', explode(',', $raw))) ?: [];
-    }
-
-    protected function getEmbeddingApiKeys(SettingsRepositoryInterface $settings): array
-    {
-        $raw = $settings->get('flarum-zai-bot.embedding_api_keys', '');
-        $keys = array_filter(array_map('trim', explode(',', $raw)));
-        if (!empty($keys)) {
-            return $keys;
+        // 触发 Created 事件：让 flarum/realtime（Warble）实时推送机器人的私信，
+        // 并让其他监听该事件的扩展（通知、统计等）感知机器人的回复。
+        // 我们自己的 ReplyToMessage 监听器会识别出这是机器人的消息而不会再次派发任务。
+        // 消息已持久化，任何同步监听器的异常都不应让任务失败重试（否则会重复生成回复）。
+        try {
+            $events->dispatch(new Created($botMessage));
+        } catch (\Throwable $e) {
+            error_log('[flarum-zai-bot] GenerateReplyForMessage: Created event dispatch failed: ' . $e->getMessage());
         }
-        return $this->getApiKeys($settings);
-    }
-
-    protected function getBotUser(string $botUsername): User
-    {
-        $botUser = User::where('username', $botUsername)->first();
-
-        if (!$botUser) {
-            $botUser = new User();
-            $botUser->username = $botUsername;
-            $botUser->email = $botUsername . '@bot.local';
-            $botUser->password = \Illuminate\Support\Str::random(40);
-            $botUser->is_email_confirmed = true;
-            $botUser->save();
-            $botUser->groups()->sync([1]);
-        }
-
-        $botUser->last_seen_at = Carbon::now();
-        $botUser->save();
-
-        return $botUser;
     }
 }
