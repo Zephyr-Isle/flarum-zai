@@ -1,5 +1,6 @@
 import app from 'flarum/admin/app';
 import ExtensionPage from 'flarum/admin/components/ExtensionPage';
+import ProvidersSettings from './ProvidersSettings';
 
 export default class AffinitiesPage extends ExtensionPage {
     affinities: any[] = [];
@@ -143,6 +144,7 @@ export default class AffinitiesPage extends ExtensionPage {
         ]);
 
         return [
+            m(ProvidersSettings, { stream: this.setting('flarum-zai-bot.providers') }),
             super.content(),
             testSection,
             m('div', { className: 'ZaiBot-affinities' }, [

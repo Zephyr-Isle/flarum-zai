@@ -32,16 +32,22 @@ export default class ProvidersSettings extends Component<ProvidersSettingsAttrs>
 
     oninit(vnode: any) {
         super.oninit(vnode);
-        this.providers = this.parseProviders(this.attrs.stream());
 
-        if (this.providers.length === 0) {
-            const legacy = this.migrateFromLegacy();
-            if (legacy.length > 0) {
-                this.providers = legacy;
-                this.migrated = true;
-                // 写回 Stream（挂载期间不重绘），让“保存”按钮立即可用，提示用户保存迁移后的配置
-                this.attrs.stream(this.serialize());
+        // 任何初始化异常都不应拖垮整个设置区（供应商编辑器只是设置页的一部分）
+        try {
+            this.providers = this.parseProviders(this.attrs.stream());
+
+            if (this.providers.length === 0) {
+                const legacy = this.migrateFromLegacy();
+                if (legacy.length > 0) {
+                    this.providers = legacy;
+                    this.migrated = true;
+                    // 写回 Stream（挂载期间不重绘），让“保存”按钮立即可用，提示用户保存迁移后的配置
+                    this.attrs.stream(this.serialize());
+                }
             }
+        } catch (e) {
+            this.providers = [];
         }
     }
 

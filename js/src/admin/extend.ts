@@ -1,16 +1,13 @@
 import app from 'flarum/admin/app';
 import Extend from 'flarum/common/extenders';
 import AffinitiesPage from './components/AffinitiesPage';
-import ProvidersSettings from './components/ProvidersSettings';
 
 const t = (key: string, params?: any) => app.translator.trans('zephyrisle-flarum-zai-bot.admin.settings.' + key, params);
 
 export default [
     new Extend.Admin()
-        // 供应商图形化配置：内部读写 flarum-zai-bot.providers（JSON），随设置表单一起保存
-        .setting(() => function (this: any) {
-            return m(ProvidersSettings, { stream: this.setting('flarum-zai-bot.providers') });
-        })
+        // 供应商图形化配置（ProvidersSettings）由自定义页 AffinitiesPage 直接渲染，
+        // 内部读写 flarum-zai-bot.providers（JSON），随设置表单一起保存。
         .setting(() => ({
             setting: 'flarum-zai-bot.username',
             label: t('username_label'),
