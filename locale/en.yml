@@ -2,7 +2,8 @@ zephyrisle-flarum-zai-bot:
   admin:
     settings:
       providers_label: 'Providers (JSON, multi-provider with auto-failover)'
-      providers_help: 'Optional JSON array overriding the settings below. Each provider can have its own URL, keys and model. Providers are tried in order; if one fails the next is used automatically. Example: [{"name": "DeepSeek", "api_url": "https://api.deepseek.com/v1", "api_keys": "sk-a,sk-b", "model": "deepseek-chat"}, {"name": "OpenAI", "api_url": "https://api.openai.com/v1", "api_keys": "sk-c", "model": "gpt-4o-mini"}]'
+      # Note: braces in the example JSON must be ICU-escaped (''{'' = literal {), otherwise Flarum's format-message parses them as placeholders and crashes the admin page.
+      providers_help: 'Optional JSON array overriding the settings below. Each provider can have its own URL, keys and model. Providers are tried in order; if one fails the next is used automatically. Example: [''{''"name": "DeepSeek", "api_url": "https://api.deepseek.com/v1", "api_keys": "sk-a,sk-b", "model": "deepseek-chat"''}'', ''{''"name": "OpenAI", "api_url": "https://api.openai.com/v1", "api_keys": "sk-c", "model": "gpt-4o-mini"''}'']'
       api_url_label: 'API URL (legacy, used when Providers is empty)'
       api_url_help: OpenAI-compatible API endpoint. Only used when the Providers setting above is empty.
       api_keys_label: 'API Keys (comma-separated, auto-failover)'

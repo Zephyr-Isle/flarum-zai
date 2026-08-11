@@ -2,7 +2,8 @@ zephyrisle-flarum-zai-bot:
   admin:
     settings:
       providers_label: '供应商配置（JSON，多供应商自动回退）'
-      providers_help: '可选的 JSON 数组，可覆盖下方旧版设置。每个供应商可独立配置地址、密钥和模型；按顺序尝试，失败自动回退到下一个。示例：[{"name": "DeepSeek", "api_url": "https://api.deepseek.com/v1", "api_keys": "sk-a,sk-b", "model": "deepseek-chat"}, {"name": "OpenAI", "api_url": "https://api.openai.com/v1", "api_keys": "sk-c", "model": "gpt-4o-mini"}]'
+      # 注意：示例 JSON 的花括号必须用 ICU 转义（''{'' = 字面 { ），否则 Flarum 的 format-message 会将其当作占位符解析并导致后台崩溃。
+      providers_help: '可选的 JSON 数组，可覆盖下方旧版设置。每个供应商可独立配置地址、密钥和模型；按顺序尝试，失败自动回退到下一个。示例：[''{''"name": "DeepSeek", "api_url": "https://api.deepseek.com/v1", "api_keys": "sk-a,sk-b", "model": "deepseek-chat"''}'', ''{''"name": "OpenAI", "api_url": "https://api.openai.com/v1", "api_keys": "sk-c", "model": "gpt-4o-mini"''}'']'
       api_url_label: 'API 地址（旧版，仅当上方供应商配置为空时使用）'
       api_url_help: OpenAI 兼容的 API 地址。仅当上方供应商配置为空时使用。
       api_keys_label: 'API 密钥（多个用逗号分隔，自动故障转移）'
