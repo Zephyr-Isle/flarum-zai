@@ -41,19 +41,28 @@ class AIServiceTest extends TestCase
      */
     protected function stubCommonSettings(): void
     {
-        $this->settings->shouldReceive('get')->andReturnUsing(function (string $key, mixed $default = null) {
-            return match ($key) {
-                'flarum-zai-bot.providers' => '',
-                'flarum-zai-bot.api_url' => 'https://api.openai.com/v1',
-                'flarum-zai-bot.model' => 'gpt-3.5-turbo',
-                'flarum-zai-bot.api_keys' => 'key-1',
-                'flarum-zai-bot.last_llm_key_index' => -1,
-                'flarum-zai-bot.timezone' => 'Asia/Shanghai',
-                'flarum-zai-bot.system_prompt' => 'You are a friendly community forum assistant. Keep responses concise and helpful.',
-                'flarum-zai-bot.bot_display_name' => 'Yuki',
-                'flarum-zai-bot.openweather_key' => null,
-                default => $default,
-            };
+        $this->stubSettings([
+            'flarum-zai-bot.providers' => json_encode([
+                ['name' => 'Default', 'api_url' => 'https://api.openai.com/v1', 'api_keys' => 'key-1', 'model' => 'gpt-4o-mini'],
+            ]),
+        ]);
+    }
+
+    /**
+     * 基于通用设置构造 settings mock，并允许按测试覆盖指定键。
+     */
+    protected function stubSettings(array $overrides = []): void
+    {
+        $values = array_merge([
+            'flarum-zai-bot.last_llm_key_index' => -1,
+            'flarum-zai-bot.timezone' => 'Asia/Shanghai',
+            'flarum-zai-bot.system_prompt' => 'You are a friendly community forum assistant. Keep responses concise and helpful.',
+            'flarum-zai-bot.bot_display_name' => 'Yuki',
+            'flarum-zai-bot.openweather_key' => null,
+        ], $overrides);
+
+        $this->settings->shouldReceive('get')->andReturnUsing(function (string $key, mixed $default = null) use ($values) {
+            return array_key_exists($key, $values) ? $values[$key] : $default;
         });
 
         $this->settings->shouldReceive('set')->byDefault()->andReturnNull();
@@ -76,20 +85,11 @@ class AIServiceTest extends TestCase
 
     public function testGenerateReplyFailsOverToNextApiKey(): void
     {
-        $this->settings->shouldReceive('get')->andReturnUsing(function (string $key, mixed $default = null) {
-            return match ($key) {
-                'flarum-zai-bot.providers' => '',
-                'flarum-zai-bot.api_url' => 'https://api.openai.com/v1',
-                'flarum-zai-bot.model' => 'gpt-3.5-turbo',
-                'flarum-zai-bot.api_keys' => 'key-1,key-2',
-                'flarum-zai-bot.last_llm_key_index' => -1,
-                'flarum-zai-bot.timezone' => 'Asia/Shanghai',
-                'flarum-zai-bot.system_prompt' => 'You are a friendly community forum assistant. Keep responses concise and helpful.',
-                'flarum-zai-bot.bot_display_name' => 'Yuki',
-                'flarum-zai-bot.openweather_key' => null,
-                default => $default,
-            };
-        });
+        $this->stubSettings([
+            'flarum-zai-bot.providers' => json_encode([
+                ['name' => 'Default', 'api_url' => 'https://api.openai.com/v1', 'api_keys' => 'key-1,key-2', 'model' => 'gpt-4o-mini'],
+            ]),
+        ]);
 
         // First key: connection failure
         $this->client->shouldReceive('post')
@@ -115,21 +115,13 @@ class AIServiceTest extends TestCase
 
     public function testGenerateReplyRotatesKeysRoundRobin(): void
     {
-        $this->settings->shouldReceive('get')->andReturnUsing(function (string $key, mixed $default = null) {
-            return match ($key) {
-                'flarum-zai-bot.providers' => '',
-                'flarum-zai-bot.api_url' => 'https://api.openai.com/v1',
-                'flarum-zai-bot.model' => 'gpt-3.5-turbo',
-                'flarum-zai-bot.api_keys' => 'key-1,key-2',
-                // 上次成功的是 key-2（索引 1），本次应从 key-1 开始
-                'flarum-zai-bot.last_llm_key_index' => 1,
-                'flarum-zai-bot.timezone' => 'Asia/Shanghai',
-                'flarum-zai-bot.system_prompt' => 'You are a friendly community forum assistant. Keep responses concise and helpful.',
-                'flarum-zai-bot.bot_display_name' => 'Yuki',
-                'flarum-zai-bot.openweather_key' => null,
-                default => $default,
-            };
-        });
+        $this->stubSettings([
+            'flarum-zai-bot.providers' => json_encode([
+                ['name' => 'Default', 'api_url' => 'https://api.openai.com/v1', 'api_keys' => 'key-1,key-2', 'model' => 'gpt-4o-mini'],
+            ]),
+            // 上次成功的是 key-2（索引 1），本次应从 key-1 开始
+            'flarum-zai-bot.last_llm_key_index' => 1,
+        ]);
 
         // 第一把钥匙（key-1）失败，第二把（key-2）成功
         $this->client->shouldReceive('post')
@@ -260,21 +252,12 @@ class AIServiceTest extends TestCase
 
     public function testGenerateReplyFailsOverAcrossProviders(): void
     {
-        $this->settings->shouldReceive('get')->andReturnUsing(function (string $key, mixed $default = null) {
-            return match ($key) {
-                'flarum-zai-bot.providers' => json_encode([
-                    ['name' => 'Down', 'api_url' => 'https://down.example/v1', 'api_keys' => 'k-down', 'model' => 'down-model'],
-                    ['name' => 'Up', 'api_url' => 'https://up.example/v1', 'api_keys' => 'k-up', 'model' => 'up-model'],
-                ]),
-                'flarum-zai-bot.last_llm_key_index' => -1,
-                'flarum-zai-bot.timezone' => 'Asia/Shanghai',
-                'flarum-zai-bot.system_prompt' => 'You are a friendly community forum assistant. Keep responses concise and helpful.',
-                'flarum-zai-bot.bot_display_name' => 'Yuki',
-                'flarum-zai-bot.openweather_key' => null,
-                default => $default,
-            };
-        });
-        $this->settings->shouldReceive('set')->byDefault()->andReturnNull();
+        $this->stubSettings([
+            'flarum-zai-bot.providers' => json_encode([
+                ['name' => 'Down', 'api_url' => 'https://down.example/v1', 'api_keys' => 'k-down', 'model' => 'down-model'],
+                ['name' => 'Up', 'api_url' => 'https://up.example/v1', 'api_keys' => 'k-up', 'model' => 'up-model'],
+            ]),
+        ]);
 
         // 供应商 Down 失败 → 自动回退到供应商 Up，使用 Up 自己的 URL 与模型
         $this->client->shouldReceive('post')

@@ -1,38 +1,16 @@
 import app from 'flarum/admin/app';
 import Extend from 'flarum/common/extenders';
 import AffinitiesPage from './components/AffinitiesPage';
+import ProvidersSettings from './components/ProvidersSettings';
 
 const t = (key: string, params?: any) => app.translator.trans('zephyrisle-flarum-zai-bot.admin.settings.' + key, params);
 
 export default [
     new Extend.Admin()
-        .setting(() => ({
-            setting: 'flarum-zai-bot.providers',
-            label: t('providers_label'),
-            help: t('providers_help'),
-            type: 'textarea',
-            default: '',
-        }))
-        .setting(() => ({
-            setting: 'flarum-zai-bot.api_url',
-            label: t('api_url_label'),
-            help: t('api_url_help'),
-            type: 'text',
-            default: 'https://api.openai.com/v1',
-        }))
-        .setting(() => ({
-            setting: 'flarum-zai-bot.api_keys',
-            label: t('api_keys_label'),
-            help: t('api_keys_help'),
-            type: 'text',
-            default: '',
-        }))
-        .setting(() => ({
-            setting: 'flarum-zai-bot.model',
-            label: t('model_label'),
-            type: 'text',
-            default: 'gpt-3.5-turbo',
-        }))
+        // 供应商图形化配置：内部读写 flarum-zai-bot.providers（JSON），随设置表单一起保存
+        .setting(() => function (this: any) {
+            return m(ProvidersSettings, { stream: this.setting('flarum-zai-bot.providers') });
+        })
         .setting(() => ({
             setting: 'flarum-zai-bot.username',
             label: t('username_label'),
@@ -112,21 +90,9 @@ export default [
             default: 'Beijing',
         }))
         .setting(() => ({
-            setting: 'flarum-zai-bot.embedding_api_keys',
-            label: t('embedding_api_keys_label'),
-            help: t('embedding_api_keys_help'),
-            type: 'text',
-            default: '',
-        }))
-        .setting(() => ({
-            setting: 'flarum-zai-bot.embedding_api_url',
-            label: t('embedding_api_url_label'),
-            type: 'text',
-            default: '',
-        }))
-        .setting(() => ({
             setting: 'flarum-zai-bot.embedding_model',
             label: t('embedding_model_label'),
+            help: t('embedding_model_help'),
             type: 'text',
             default: 'text-embedding-3-small',
         }))

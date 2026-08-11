@@ -1,14 +1,26 @@
 zephyrisle-flarum-zai-bot:
   admin:
     settings:
-      providers_label: '供应商配置（JSON，多供应商自动回退）'
-      # 注意：示例 JSON 的花括号必须用 ICU 转义（''{'' = 字面 { ），否则 Flarum 的 format-message 会将其当作占位符解析并导致后台崩溃。
-      providers_help: '可选的 JSON 数组，可覆盖下方旧版设置。每个供应商可独立配置地址、密钥和模型；按顺序尝试，失败自动回退到下一个。示例：[''{''"name": "DeepSeek", "api_url": "https://api.deepseek.com/v1", "api_keys": "sk-a,sk-b", "model": "deepseek-chat"''}'', ''{''"name": "OpenAI", "api_url": "https://api.openai.com/v1", "api_keys": "sk-c", "model": "gpt-4o-mini"''}'']'
-      api_url_label: 'API 地址（旧版，仅当上方供应商配置为空时使用）'
-      api_url_help: OpenAI 兼容的 API 地址。仅当上方供应商配置为空时使用。
-      api_keys_label: 'API 密钥（多个用逗号分隔，自动故障转移）'
-      api_keys_help: 多个密钥自动故障转移和轮询使用。仅当上方供应商配置为空时使用。
-      model_label: 模型
+      providers_label: '供应商配置'
+      providers_help: '配置一个或多个 AI 供应商，按顺序尝试，失败自动回退到下一个；同一供应商的多个密钥也会自动故障转移与轮询。LLM 与 Embedding 请求共用此配置。'
+      provider_name_placeholder: '例如 DeepSeek / OpenAI（可选）'
+      provider_enabled_label: '启用'
+      provider_move_up: '上移'
+      provider_move_down: '下移'
+      provider_delete: '删除该供应商'
+      provider_add: '添加供应商'
+      provider_empty: '尚未配置任何供应商，点击“添加供应商”开始配置。'
+      provider_url_label: 'API 地址'
+      provider_url_placeholder: 'https://api.example.com/v1'
+      provider_keys_label: 'API 密钥（多个用英文逗号分隔，自动故障转移）'
+      provider_keys_placeholder: 'sk-xxx,sk-yyy'
+      provider_model_label: '模型'
+      provider_model_placeholder: 'gpt-4o-mini'
+      provider_url_required: 'API 地址不能为空'
+      provider_url_invalid: 'API 地址需以 http:// 或 https:// 开头'
+      provider_keys_required: '请至少输入一个 API 密钥'
+      provider_model_required: '模型不能为空'
+      providers_migrated: '检测到旧版设置，已自动导入到上方列表，请核对后保存。'
       username_label: 机器人用户名
       random_reply_chance_label: '随机回复概率（%）'
       reply_cooldown_label: '回复决策窗口（秒）'
@@ -25,10 +37,8 @@ zephyrisle-flarum-zai-bot:
       jina_use_builtin_proxy_help: 请求经由本服务器转发（服务器无法直连 Jina 时使用）。需先启用 Jina 优化模式。
       openweather_key_label: OpenWeather API 密钥
       openweather_city_label: OpenWeather 城市
-      embedding_api_keys_label: 'Embedding API 密钥（多个用逗号分隔）'
-      embedding_api_keys_help: 留空则回退使用主 LLM API 密钥。
-      embedding_api_url_label: 'Embedding API 地址（留空使用主 API 地址）'
       embedding_model_label: Embedding 模型
+      embedding_model_help: '用于向量记忆（pgvector）的 Embedding 模型，使用上方供应商的地址与密钥。'
       pgvector_host_label: 'PostgreSQL 主机（用于 pgvector 记忆，留空禁用）'
       pgvector_host_help: '需要 pgvector 扩展。向量维度须与模型一致（默认 1536）。'
       pgvector_port_label: PostgreSQL 端口

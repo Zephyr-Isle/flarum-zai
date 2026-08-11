@@ -25,27 +25,17 @@ class ProviderServiceTest extends TestCase
         return new ProviderService($this->settings);
     }
 
-    public function testChatEndpointsFallsBackToLegacySettings(): void
+    public function testChatEndpointsReturnsEmptyWhenNoProvidersConfigured(): void
     {
+        // 旧版 api_url / api_keys / model 设置已删除，未配置供应商时不应再回退
         $this->settings->shouldReceive('get')->andReturnUsing(function (string $key, mixed $default = null) {
             return match ($key) {
                 'flarum-zai-bot.providers' => '',
-                'flarum-zai-bot.api_url' => 'https://api.openai.com/v1/',
-                'flarum-zai-bot.model' => 'gpt-3.5-turbo',
-                'flarum-zai-bot.api_keys' => 'key-1,key-2',
                 default => $default,
             };
         });
 
-        $endpoints = $this->service()->chatEndpoints();
-
-        $this->assertCount(2, $endpoints);
-        $this->assertSame('Default', $endpoints[0]['name']);
-        // 尾斜杠应被去除
-        $this->assertSame('https://api.openai.com/v1', $endpoints[0]['api_url']);
-        $this->assertSame('key-1', $endpoints[0]['api_key']);
-        $this->assertSame('gpt-3.5-turbo', $endpoints[0]['model']);
-        $this->assertSame('key-2', $endpoints[1]['api_key']);
+        $this->assertSame([], $this->service()->chatEndpoints());
     }
 
     public function testChatEndpointsParsesProvidersAndFlattensKeys(): void
@@ -56,7 +46,6 @@ class ProviderServiceTest extends TestCase
                     ['name' => 'DeepSeek', 'api_url' => 'https://api.deepseek.com/v1', 'api_keys' => 'sk-a,sk-b', 'model' => 'deepseek-chat'],
                     ['name' => 'OpenAI', 'api_url' => 'https://api.openai.com/v1', 'api_keys' => 'sk-c'],
                 ]),
-                'flarum-zai-bot.model' => 'gpt-3.5-turbo',
                 default => $default,
             };
         });
@@ -69,9 +58,9 @@ class ProviderServiceTest extends TestCase
         $this->assertSame('sk-a', $endpoints[0]['api_key']);
         $this->assertSame('deepseek-chat', $endpoints[0]['model']);
         $this->assertSame('sk-b', $endpoints[1]['api_key']);
-        // 未指定 model 的供应商回退到默认模型设置
+        // 未指定 model 的供应商回退到默认模型
         $this->assertSame('OpenAI', $endpoints[2]['name']);
-        $this->assertSame('gpt-3.5-turbo', $endpoints[2]['model']);
+        $this->assertSame('gpt-4o-mini', $endpoints[2]['model']);
     }
 
     public function testProvidersFiltersDisabledAndInvalidEntries(): void
@@ -89,15 +78,27 @@ class ProviderServiceTest extends TestCase
         $this->assertSame('Enabled', $providers[0]['name']);
     }
 
-    public function testEmbeddingEndpointsFallBackToMainKeys(): void
+    public function testEmbeddingEndpointsReturnsEmptyWhenNoProvidersConfigured(): void
     {
+        // 旧版 embedding_api_url / embedding_api_keys / api_keys 回退已删除
         $this->settings->shouldReceive('get')->andReturnUsing(function (string $key, mixed $default = null) {
             return match ($key) {
                 'flarum-zai-bot.providers' => '',
-                'flarum-zai-bot.embedding_api_url' => '',
-                'flarum-zai-bot.api_url' => 'https://api.openai.com/v1',
-                'flarum-zai-bot.embedding_api_keys' => '',
-                'flarum-zai-bot.api_keys' => 'main-1,main-2',
+                default => $default,
+            };
+        });
+
+        $this->assertSame([], $this->service()->embeddingEndpoints());
+    }
+
+    public function testEmbeddingEndpointsUseProvidersWithoutModel(): void
+    {
+        $this->settings->shouldReceive('get')->andReturnUsing(function (string $key, mixed $default = null) {
+            return match ($key) {
+                'flarum-zai-bot.providers' => json_encode([
+                    // 未指定 model：embedding 端点不应携带 model（模型统一用 embedding_model 设置）
+                    ['name' => 'DeepSeek', 'api_url' => 'https://api.deepseek.com/v1', 'api_keys' => 'sk-a,sk-b'],
+                ]),
                 default => $default,
             };
         });
@@ -105,8 +106,9 @@ class ProviderServiceTest extends TestCase
         $endpoints = $this->service()->embeddingEndpoints();
 
         $this->assertCount(2, $endpoints);
-        $this->assertSame('https://api.openai.com/v1', $endpoints[0]['api_url']);
-        $this->assertSame('main-1', $endpoints[0]['api_key']);
+        $this->assertSame('https://api.deepseek.com/v1', $endpoints[0]['api_url']);
+        $this->assertSame('sk-a', $endpoints[0]['api_key']);
+        $this->assertSame('sk-b', $endpoints[1]['api_key']);
         // 扁平化时 embedding 端点不携带 model（模型统一用 embedding_model 设置）
         $this->assertArrayNotHasKey('model', $endpoints[0]);
     }
@@ -177,21 +179,11 @@ class ProviderServiceTest extends TestCase
         $this->service()->removeApiKey('k1');
     }
 
-    public function testRemoveApiKeyFromLegacyEmbeddingKeys(): void
+    public function testRemoveApiKeyDoesNothingWithoutProviders(): void
     {
+        // 旧版设置已删除：providers 为空时移除密钥应为空操作
         $this->settings->shouldReceive('get')->with('flarum-zai-bot.providers', '')->andReturn('');
-        $this->settings->shouldReceive('get')->with('flarum-zai-bot.embedding_api_keys', '')->andReturn('k1,k2');
-        $this->settings->shouldReceive('set')->with('flarum-zai-bot.embedding_api_keys', 'k2')->once();
-
-        $this->service()->removeApiKey('k1');
-    }
-
-    public function testRemoveApiKeyFromLegacyMainKeys(): void
-    {
-        $this->settings->shouldReceive('get')->with('flarum-zai-bot.providers', '')->andReturn('');
-        $this->settings->shouldReceive('get')->with('flarum-zai-bot.embedding_api_keys', '')->andReturn('');
-        $this->settings->shouldReceive('get')->with('flarum-zai-bot.api_keys', '')->andReturn('k1,k2');
-        $this->settings->shouldReceive('set')->with('flarum-zai-bot.api_keys', 'k2')->once();
+        $this->settings->shouldReceive('set')->never();
 
         $this->service()->removeApiKey('k1');
     }

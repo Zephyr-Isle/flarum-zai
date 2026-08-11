@@ -5,16 +5,16 @@ namespace Zephyrisle\FlarumZaiBot\Service;
 use Flarum\Settings\SettingsRepositoryInterface;
 
 /**
- * 多供应商配置解析与回退。
+ * 多供应商配置解析。
  *
- * 优先读取 `flarum-zai-bot.providers`（JSON 数组，每个元素一个供应商）：
+ * 供应商配置存于 `flarum-zai-bot.providers`（JSON 数组，每个元素一个供应商）：
  *   [
  *     {"name": "DeepSeek", "api_url": "https://api.deepseek.com/v1", "api_keys": "sk-a,sk-b", "model": "deepseek-chat", "enabled": true},
  *     {"name": "OpenAI",   "api_url": "https://api.openai.com/v1",   "api_keys": "sk-c",         "model": "gpt-4o-mini"}
  *   ]
  *
- * 未配置 providers 时回退到旧版设置：api_url / api_keys（逗号分隔）/ model，
- * embedding 回退到 embedding_api_url / embedding_api_keys。
+ * 旧版设置（api_url / api_keys / model / embedding_api_url / embedding_api_keys）
+ * 已删除，LLM 与 Embedding 请求都只从 providers 构建端点。
  *
  * 每个供应商的每个密钥都会展开为一个独立端点，调用方按顺序逐个尝试实现自动回退，
  * 并用轮询起始索引（last_*_key_index）实现多个端点间的负载均衡。
@@ -30,22 +30,10 @@ class ProviderService
      */
     public function chatEndpoints(): array
     {
-        $providers = $this->providers();
+        // 兼容旧 JSON 配置：供应商未指定 model 时，回退到已不再在后台展示的旧版 model 设置（若仍存在于数据库中）
+        $defaultModel = $this->settings->get('flarum-zai-bot.model', 'gpt-4o-mini');
 
-        if (!empty($providers)) {
-            $defaultModel = $this->settings->get('flarum-zai-bot.model', 'gpt-3.5-turbo');
-            return $this->flatten($providers, $defaultModel);
-        }
-
-        $url = rtrim($this->settings->get('flarum-zai-bot.api_url', 'https://api.openai.com/v1'), '/');
-        $model = $this->settings->get('flarum-zai-bot.model', 'gpt-3.5-turbo');
-
-        return array_map(fn (string $key) => [
-            'name' => 'Default',
-            'api_url' => $url,
-            'api_key' => $key,
-            'model' => $model,
-        ], $this->parseKeys($this->settings->get('flarum-zai-bot.api_keys', '')));
+        return $this->flatten($this->providers(), $defaultModel);
     }
 
     /**
@@ -53,24 +41,7 @@ class ProviderService
      */
     public function embeddingEndpoints(): array
     {
-        $providers = $this->providers();
-
-        if (!empty($providers)) {
-            return $this->flatten($providers, null);
-        }
-
-        $embedUrl = $this->settings->get('flarum-zai-bot.embedding_api_url', '');
-        $url = rtrim($embedUrl ?: $this->settings->get('flarum-zai-bot.api_url', 'https://api.openai.com/v1'), '/');
-        $keys = $this->parseKeys($this->settings->get('flarum-zai-bot.embedding_api_keys', ''));
-        if (empty($keys)) {
-            $keys = $this->parseKeys($this->settings->get('flarum-zai-bot.api_keys', ''));
-        }
-
-        return array_map(fn (string $key) => [
-            'name' => 'Default',
-            'api_url' => $url,
-            'api_key' => $key,
-        ], $keys);
+        return $this->flatten($this->providers(), null);
     }
 
     public function embeddingModel(): string
@@ -148,55 +119,42 @@ class ProviderService
     }
 
     /**
-     * 从供应商配置（或旧版设置）中移除已耗尽的密钥。
+     * 从供应商配置中移除已耗尽的密钥。
      */
     public function removeApiKey(string $apiKey): void
     {
         $raw = $this->settings->get('flarum-zai-bot.providers', '');
 
-        if (!empty($raw)) {
-            $providers = json_decode($raw, true);
-            if (is_array($providers)) {
-                $changed = false;
-                foreach ($providers as &$provider) {
-                    if (!is_array($provider)) {
-                        continue;
-                    }
-                    $keys = $this->parseKeys($provider['api_keys'] ?? '');
-                    if (in_array($apiKey, $keys, true)) {
-                        $keys = array_values(array_filter($keys, fn ($k) => $k !== $apiKey));
-                        $provider['api_keys'] = implode(',', $keys);
-                        $changed = true;
-                    }
-                }
-                unset($provider);
-
-                if ($changed) {
-                    // 顺带清理已没有任何密钥的供应商，避免 JSON 中长期残留空壳条目
-                    $providers = array_values(array_filter($providers, function ($p) {
-                        return is_array($p) && !empty($this->parseKeys($p['api_keys'] ?? ''));
-                    }));
-                    $this->settings->set('flarum-zai-bot.providers', json_encode($providers));
-                    return;
-                }
-            }
-        }
-
-        // 旧版 embedding 密钥
-        $raw = $this->settings->get('flarum-zai-bot.embedding_api_keys', '');
-        $keys = $this->parseKeys($raw);
-        if (in_array($apiKey, $keys, true)) {
-            $keys = array_values(array_filter($keys, fn ($k) => $k !== $apiKey));
-            $this->settings->set('flarum-zai-bot.embedding_api_keys', implode(',', $keys));
+        if (empty($raw)) {
             return;
         }
 
-        // 旧版主密钥
-        $raw = $this->settings->get('flarum-zai-bot.api_keys', '');
-        $keys = $this->parseKeys($raw);
-        if (in_array($apiKey, $keys, true)) {
-            $keys = array_values(array_filter($keys, fn ($k) => $k !== $apiKey));
-            $this->settings->set('flarum-zai-bot.api_keys', implode(',', $keys));
+        $providers = json_decode($raw, true);
+
+        if (!is_array($providers)) {
+            return;
+        }
+
+        $changed = false;
+        foreach ($providers as &$provider) {
+            if (!is_array($provider)) {
+                continue;
+            }
+            $keys = $this->parseKeys($provider['api_keys'] ?? '');
+            if (in_array($apiKey, $keys, true)) {
+                $keys = array_values(array_filter($keys, fn ($k) => $k !== $apiKey));
+                $provider['api_keys'] = implode(',', $keys);
+                $changed = true;
+            }
+        }
+        unset($provider);
+
+        if ($changed) {
+            // 顺带清理已没有任何密钥的供应商，避免 JSON 中长期残留空壳条目
+            $providers = array_values(array_filter($providers, function ($p) {
+                return is_array($p) && !empty($this->parseKeys($p['api_keys'] ?? ''));
+            }));
+            $this->settings->set('flarum-zai-bot.providers', json_encode($providers));
         }
     }
 

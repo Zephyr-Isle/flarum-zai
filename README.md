@@ -10,8 +10,7 @@ An AI-powered bot extension for [Flarum](https://flarum.org) that automatically 
 - Runs via **queue** (`php flarum queue:work`) - non-blocking, scalable
 
 ### AI Integration
-- **Multi-provider with automatic failover**: configure any number of providers (each with its own URL, keys and model) as JSON; if one provider/key fails, the next is tried automatically, and successful endpoints are used round-robin
-- Legacy single-URL settings remain fully supported (fallback when no providers are configured)
+- **Multi-provider with automatic failover**: configure any number of providers in a graphical editor in the admin panel (each with its own URL, keys and model); if one provider/key fails, the next is tried automatically, and successful endpoints are used round-robin
 - Full **tool calling** loop - multi-round tool use for complex tasks
 - **Personality presets**: `friendly`, `tsundere`, `loli`, `cool`, or `custom` (raw system prompt)
 
@@ -71,35 +70,25 @@ Then configure in the admin panel under **ZAI Bot** settings.
 
 ## Configuration
 
-### Providers (recommended)
-Configure one or more providers as a JSON array in the `providers` setting. Each entry can have its own URL, keys and model; providers are tried in order, and when one fails the next is used automatically. Keys within a provider also fail over, and all endpoints are used round-robin.
-
-```json
-[
-  {"name": "DeepSeek", "api_url": "https://api.deepseek.com/v1", "api_keys": "sk-a,sk-b", "model": "deepseek-chat"},
-  {"name": "OpenAI",   "api_url": "https://api.openai.com/v1",   "api_keys": "sk-c",         "model": "gpt-4o-mini"}
-]
-```
+### Providers
+Configure providers in the **graphical editor** at the top of the ZAI Bot admin settings page. Each provider has:
 
 - `name` (optional): shown in admin test results
 - `api_url` (required): OpenAI-compatible endpoint
 - `api_keys` (required): comma-separated keys with automatic failover
-- `model` (optional): per-provider model; defaults to the global `model` setting
-- `enabled` (optional, default `true`): set `false` to temporarily disable a provider
+- `model` (required): model to use for this provider
+- `enabled`: toggle to temporarily disable a provider
 
-Embedding requests use the same provider list (with the global `embedding_model`).
+Providers are tried in order; when one fails the next is used automatically. Keys within a provider also fail over, and all endpoints are used round-robin. You can reorder providers with the arrow buttons. Settings are stored as JSON in the `flarum-zai-bot.providers` setting.
 
-### Required Settings (legacy, used only when `providers` is empty)
-| Setting | Key | Description |
-|---------|-----|-------------|
-| API URL | `api_url` | OpenAI-compatible endpoint (default: `https://api.openai.com/v1`) |
-| API Key | `api_keys` | Comma-separated API keys (auto-failover & round-robin) |
-| Model | `model` | Model name (default: `gpt-3.5-turbo`) |
-| Bot Username | `username` | Bot's Flarum username (default: `AIGirl`) |
+Legacy `api_url` / `api_keys` / `model` settings are removed from the admin UI. If they were configured before upgrading, they are imported into the editor on first visit — just review and save. For backward compatibility, provider entries without a `model` (e.g. older JSON configs) fall back to the legacy `model` setting if it still exists in the database, otherwise `gpt-4o-mini`.
+
+Embedding requests reuse the same provider list (URL and keys) together with the global `embedding_model` setting.
 
 ### Optional Settings
 | Setting | Key | Default | Description |
 |---------|-----|---------|-------------|
+| Bot Username | `username` | `AIGirl` | Bot's Flarum username |
 | Random Reply Chance | `random_reply_chance` | `0` | Auto-reply without mention (%) |
 | Reply Decision Window | `reply_cooldown` | `30` | Within this window after the bot's last reply, the AI reviews the new context and decides on its own whether to reply again (`0` = always reply). Note: within this window each trigger consumes an API call even when the bot stays silent |
 | Personality | `personality` | `friendly` | `friendly`, `tsundere`, `loli`, `cool`, or `custom` |

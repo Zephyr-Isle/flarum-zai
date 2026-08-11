@@ -152,8 +152,9 @@ class TestApiController implements RequestHandlerInterface
     protected function endpointsForTest(string $customKeys, string $customUrl, bool $embedding): array
     {
         if ($customKeys !== '' || $customUrl !== '') {
-            $url = rtrim($customUrl ?: $this->settings->get('flarum-zai-bot.api_url', 'https://api.openai.com/v1'), '/');
-            $model = $this->settings->get('flarum-zai-bot.model', 'gpt-3.5-turbo');
+            // 旧版 api_url / model 设置已删除，自定义测试使用硬编码默认值
+            $url = rtrim($customUrl ?: 'https://api.openai.com/v1', '/');
+            $model = 'gpt-4o-mini';
 
             $keys = $customKeys !== '' ? array_values(array_filter(array_map('trim', explode(',', $customKeys)))) : [];
             if (empty($keys)) {

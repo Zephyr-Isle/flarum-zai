@@ -35,19 +35,17 @@ class MemoryServiceTest extends TestCase
     }
 
     /**
-     * 默认 embedding 相关设置：embedding_api_keys=k1,k2（legacy 回退路径）。
+     * 默认 embedding 相关设置：通过供应商配置提供 embedding 端点。
      * ProviderService 会读取这些设置来构建端点列表。
      */
-    protected function stubEmbeddingSettings(string $embeddingKeys = 'k1,k2', string $mainKeys = 'x'): void
+    protected function stubEmbeddingSettings(string $apiKeys = 'k1,k2'): void
     {
-        $this->settings->shouldReceive('get')->andReturnUsing(function (string $key, mixed $default = null) use ($embeddingKeys, $mainKeys) {
+        $this->settings->shouldReceive('get')->andReturnUsing(function (string $key, mixed $default = null) use ($apiKeys) {
             return match ($key) {
-                'flarum-zai-bot.providers' => '',
-                'flarum-zai-bot.embedding_api_url' => '',
-                'flarum-zai-bot.api_url' => 'https://api.openai.com/v1',
+                'flarum-zai-bot.providers' => json_encode([
+                    ['name' => 'Default', 'api_url' => 'https://api.openai.com/v1', 'api_keys' => $apiKeys],
+                ]),
                 'flarum-zai-bot.embedding_model' => 'text-embedding-3-small',
-                'flarum-zai-bot.embedding_api_keys' => $embeddingKeys,
-                'flarum-zai-bot.api_keys' => $mainKeys,
                 'flarum-zai-bot.last_embedding_key_index' => -1,
                 default => $default,
             };
@@ -109,9 +107,12 @@ class MemoryServiceTest extends TestCase
                 'data' => [['embedding' => [9.9]]],
             ])));
 
-        // Depleted key 'k1' is removed from the legacy embedding keys via ProviderService
+        // Depleted key 'k1' is removed from the provider's keys via ProviderService
         $this->settings->shouldReceive('set')
-            ->with('flarum-zai-bot.embedding_api_keys', 'k2')
+            ->with('flarum-zai-bot.providers', Mockery::on(function (string $json) {
+                $decoded = json_decode($json, true);
+                return ($decoded[0]['api_keys'] ?? '') === 'k2';
+            }))
             ->once();
 
         $embedding = $this->service()->generateEmbedding('hello');
@@ -142,39 +143,10 @@ class MemoryServiceTest extends TestCase
 
     public function testGenerateEmbeddingReturnsNullWithNoKeys(): void
     {
-        // 既没有 embedding 密钥也没有主密钥 → 无可用端点
-        $this->stubEmbeddingSettings('', '');
+        // 供应商未配置密钥 → 无可用端点
+        $this->stubEmbeddingSettings('');
 
         $this->assertNull($this->service()->generateEmbedding('hello'));
-    }
-
-    public function testGenerateEmbeddingRemovesDepletedKeyFromMainApiKeysAsFallback(): void
-    {
-        // embedding 密钥为空 → 端点回退到主 api_keys
-        $this->stubEmbeddingSettings('', 'k1,k2');
-
-        $this->client->shouldReceive('post')
-            ->once()
-            ->andThrow(new ClientException(
-                'forbidden',
-                new Request('POST', 'https://api.openai.com/v1/embeddings'),
-                new Response(403, [], json_encode(['error' => ['message' => 'quota_exceeded']]))
-            ));
-
-        $this->client->shouldReceive('post')
-            ->once()
-            ->andReturn(new Response(200, [], json_encode([
-                'data' => [['embedding' => [2.5]]],
-            ])));
-
-        // 该密钥不在 embedding_api_keys 中，应回退到主 api_keys 移除
-        $this->settings->shouldReceive('set')
-            ->with('flarum-zai-bot.api_keys', 'k2')
-            ->once();
-
-        $embedding = $this->service()->generateEmbedding('hello');
-
-        $this->assertSame([2.5], $embedding);
     }
 
     public function testStoreMemoryReturnsFalseWhenUnavailable(): void
