@@ -1,7 +1,7 @@
 import app from 'flarum/admin/app';
 import Component from 'flarum/common/Component';
 import Switch from 'flarum/common/components/Switch';
-import icon from 'flarum/common/helpers/icon';
+import Icon from 'flarum/common/components/Icon';
 import Stream from 'flarum/common/utils/Stream';
 
 interface Provider {
@@ -232,20 +232,20 @@ export default class ProvidersSettings extends Component<ProvidersSettingsAttrs>
                         'aria-label': this.t('provider_move_up'),
                         disabled: index === 0,
                         onclick: () => this.move(index, -1),
-                    }, icon('fas fa-arrow-up')),
+                    }, m(Icon, { name: 'fas fa-arrow-up' })),
                     m('button', {
                         className: 'Button Button--icon Button--secondary' + (index === this.providers.length - 1 ? ' disabled' : ''),
                         title: this.t('provider_move_down'),
                         'aria-label': this.t('provider_move_down'),
                         disabled: index === this.providers.length - 1,
                         onclick: () => this.move(index, 1),
-                    }, icon('fas fa-arrow-down')),
+                    }, m(Icon, { name: 'fas fa-arrow-down' })),
                     m('button', {
                         className: 'Button Button--icon Button--danger',
                         title: this.t('provider_delete'),
                         'aria-label': this.t('provider_delete'),
                         onclick: () => this.removeProvider(index),
-                    }, icon('fas fa-trash-alt')),
+                    }, m(Icon, { name: 'fas fa-trash-alt' })),
                 ]),
             ]),
             m('div', { className: 'ZaiBot-provider-card-body' }, [
@@ -269,7 +269,7 @@ export default class ProvidersSettings extends Component<ProvidersSettingsAttrs>
             m('div', { className: 'helpText' }, this.t('providers_help')),
             this.migrated
                 ? m('div', { className: 'ZaiBot-providers-migrated' }, [
-                      icon('fas fa-info-circle'),
+                      m(Icon, { name: 'fas fa-info-circle' }),
                       ' ',
                       this.t('providers_migrated'),
                   ])
@@ -278,7 +278,7 @@ export default class ProvidersSettings extends Component<ProvidersSettingsAttrs>
                 ? m('div', { className: 'ZaiBot-providers-empty' }, this.t('providers_empty'))
                 : m('div', { className: 'ZaiBot-providers-list' }, this.providers.map((p, i) => this.renderCard(p, i))),
             m('button', { className: 'Button Button--primary', onclick: () => this.addProvider() }, [
-                icon('fas fa-plus'),
+                m(Icon, { name: 'fas fa-plus' }),
                 ' ',
                 this.t('provider_add'),
             ]),
