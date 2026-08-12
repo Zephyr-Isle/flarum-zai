@@ -89,12 +89,26 @@ export default [
             type: 'text',
             default: 'Beijing',
         }))
+        // Embedding 独立配置（不同步 LLM 供应商），默认完全适配 Jina AI
+        .setting(() => ({
+            setting: 'flarum-zai-bot.embedding_api_url',
+            label: t('embedding_api_url_label'),
+            help: t('embedding_api_url_help'),
+            type: 'text',
+            default: 'https://api.jina.ai/v1',
+        }))
+        .setting(() => ({
+            setting: 'flarum-zai-bot.embedding_api_key',
+            label: t('embedding_api_key_label'),
+            help: t('embedding_api_key_help'),
+            type: 'password',
+        }))
         .setting(() => ({
             setting: 'flarum-zai-bot.embedding_model',
             label: t('embedding_model_label'),
             help: t('embedding_model_help'),
             type: 'text',
-            default: 'text-embedding-3-small',
+            default: 'jina-embeddings-v3',
         }))
         .setting(() => ({
             setting: 'flarum-zai-bot.pgvector_host',

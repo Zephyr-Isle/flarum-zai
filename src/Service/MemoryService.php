@@ -3,17 +3,14 @@
 namespace Zephyrisle\FlarumZaiBot\Service;
 
 use Flarum\Settings\SettingsRepositoryInterface;
-use GuzzleHttp\Client;
 
 class MemoryService
 {
     protected ?\PDO $pdo = null;
-    protected ?string $embeddingUrl = null;
 
     public function __construct(
         protected SettingsRepositoryInterface $settings,
-        protected Client $client,
-        protected ProviderService $providers
+        protected EmbeddingService $embeddings
     ) {}
 
     public function isAvailable(): bool
@@ -23,54 +20,7 @@ class MemoryService
 
     public function generateEmbedding(string $text): ?array
     {
-        $endpoints = $this->providers->embeddingEndpoints();
-
-        if (empty($endpoints)) {
-            return null;
-        }
-
-        $model = $this->settings->get('flarum-zai-bot.embedding_model', 'text-embedding-3-small');
-
-        // 轮询起始索引：多个端点间负载均衡（上一个成功端点之后开始）
-        $startIndex = $this->providers->nextStartIndex('flarum-zai-bot.last_embedding_key_index', count($endpoints));
-        $rotatedEndpoints = $this->providers->rotateEndpoints($endpoints, $startIndex);
-
-        foreach ($rotatedEndpoints as $endpoint) {
-            $key = $endpoint['api_key'];
-
-            try {
-                $response = $this->client->post(rtrim($endpoint['api_url'], '/') . '/embeddings', [
-                    'headers' => [
-                        'Authorization' => 'Bearer ' . $key,
-                        'Content-Type' => 'application/json',
-                        'Accept' => 'application/json',
-                    ],
-                    'json' => [
-                        'model' => $model,
-                        'input' => $text,
-                    ],
-                    'timeout' => 15,
-                ]);
-
-                $body = json_decode($response->getBody(), true);
-                $embedding = $body['data'][0]['embedding'] ?? null;
-
-                if ($embedding) {
-                    $this->providers->saveIndex('flarum-zai-bot.last_embedding_key_index', $endpoints, $endpoint);
-                    return $embedding;
-                }
-
-                error_log('[flarum-zai-bot] generateEmbedding: empty embedding returned for endpoint. body=' . json_encode($body));
-                continue;
-            } catch (\Exception $e) {
-                if ($this->isKeyDepleted($e)) {
-                    $this->providers->removeApiKey($key);
-                }
-                continue;
-            }
-        }
-
-        return null;
+        return $this->embeddings->generateEmbedding($text);
     }
 
     public function searchMemories(int $userId, array $queryEmbedding, int $limit = 5): array
@@ -83,13 +33,7 @@ class MemoryService
         try {
             $vectorStr = '[' . implode(',', $queryEmbedding) . ']';
 
-            $stmt = $pdo->prepare("
-                SELECT content, created_at, 1 - (embedding <=> ?::vector) AS similarity
-                FROM bot_memories
-                WHERE user_id = ?
-                ORDER BY embedding <=> ?::vector
-                LIMIT ?
-            ");
+            $stmt = $pdo->prepare("\n                SELECT content, created_at, 1 - (embedding <=> ?::vector) AS similarity\n                FROM bot_memories\n                WHERE user_id = ?\n                ORDER BY embedding <=> ?::vector\n                LIMIT ?\n            ");
 
             $stmt->execute([$vectorStr, $userId, $vectorStr, $limit]);
             return $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
@@ -108,15 +52,12 @@ class MemoryService
         try {
             $vectorStr = '[' . implode(',', $embedding) . ']';
 
-            $stmt = $pdo->prepare("
-                INSERT INTO bot_memories (user_id, content, embedding, created_at)
-                VALUES (?, ?, ?::vector, NOW())
-            ");
+            $stmt = $pdo->prepare("\n                INSERT INTO bot_memories (user_id, content, embedding, created_at)\n                VALUES (?, ?, ?::vector, NOW())\n            ");
 
             $stmt->execute([$userId, $content, $vectorStr]);
             return true;
         } catch (\Exception $e) {
-            error_log('[flarum-zai-bot] storeMemory failed (check embedding dimension matches vector(1536)): ' . $e->getMessage());
+            error_log('[flarum-zai-bot] storeMemory failed (check embedding dimension matches vector(1024)): ' . $e->getMessage());
             return false;
         }
     }
@@ -152,18 +93,4 @@ class MemoryService
             return null;
         }
     }
-
-    protected function isKeyDepleted(\Exception $e): bool
-    {
-        if ($e instanceof \GuzzleHttp\Exception\ClientException) {
-            $statusCode = $e->getResponse()->getStatusCode();
-            if (in_array($statusCode, [402, 403])) return true;
-            $body = json_decode((string)$e->getResponse()->getBody(), true);
-            $msg = $body['error']['message'] ?? $body['error']['code'] ?? '';
-            return (bool)preg_match('/insufficient|quota|exhausted|payment|balance/i', $msg);
-        }
-        return false;
-    }
-
 }
-

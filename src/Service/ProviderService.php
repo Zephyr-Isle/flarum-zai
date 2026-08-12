@@ -14,7 +14,8 @@ use Flarum\Settings\SettingsRepositoryInterface;
  *   ]
  *
  * 旧版设置（api_url / api_keys / model / embedding_api_url / embedding_api_keys）
- * 已删除，LLM 与 Embedding 请求都只从 providers 构建端点。
+ * 已删除，LLM 请求只从 providers 构建端点。
+ * Embedding 使用独立的 EmbeddingService（见 EmbeddingService），不再复用本配置。
  *
  * 每个供应商的每个密钥都会展开为一个独立端点，调用方按顺序逐个尝试实现自动回退，
  * 并用轮询起始索引（last_*_key_index）实现多个端点间的负载均衡。
@@ -34,19 +35,6 @@ class ProviderService
         $defaultModel = $this->settings->get('flarum-zai-bot.model', 'gpt-4o-mini');
 
         return $this->flatten($this->providers(), $defaultModel);
-    }
-
-    /**
-     * Embedding 端点列表：[{name, api_url, api_key}]（模型统一使用 embedding_model 设置）。
-     */
-    public function embeddingEndpoints(): array
-    {
-        return $this->flatten($this->providers(), null);
-    }
-
-    public function embeddingModel(): string
-    {
-        return $this->settings->get('flarum-zai-bot.embedding_model', 'text-embedding-3-small');
     }
 
     /**

@@ -78,41 +78,6 @@ class ProviderServiceTest extends TestCase
         $this->assertSame('Enabled', $providers[0]['name']);
     }
 
-    public function testEmbeddingEndpointsReturnsEmptyWhenNoProvidersConfigured(): void
-    {
-        // 旧版 embedding_api_url / embedding_api_keys / api_keys 回退已删除
-        $this->settings->shouldReceive('get')->andReturnUsing(function (string $key, mixed $default = null) {
-            return match ($key) {
-                'flarum-zai-bot.providers' => '',
-                default => $default,
-            };
-        });
-
-        $this->assertSame([], $this->service()->embeddingEndpoints());
-    }
-
-    public function testEmbeddingEndpointsUseProvidersWithoutModel(): void
-    {
-        $this->settings->shouldReceive('get')->andReturnUsing(function (string $key, mixed $default = null) {
-            return match ($key) {
-                'flarum-zai-bot.providers' => json_encode([
-                    // 未指定 model：embedding 端点不应携带 model（模型统一用 embedding_model 设置）
-                    ['name' => 'DeepSeek', 'api_url' => 'https://api.deepseek.com/v1', 'api_keys' => 'sk-a,sk-b'],
-                ]),
-                default => $default,
-            };
-        });
-
-        $endpoints = $this->service()->embeddingEndpoints();
-
-        $this->assertCount(2, $endpoints);
-        $this->assertSame('https://api.deepseek.com/v1', $endpoints[0]['api_url']);
-        $this->assertSame('sk-a', $endpoints[0]['api_key']);
-        $this->assertSame('sk-b', $endpoints[1]['api_key']);
-        // 扁平化时 embedding 端点不携带 model（模型统一用 embedding_model 设置）
-        $this->assertArrayNotHasKey('model', $endpoints[0]);
-    }
-
     public function testNextStartIndexRoundRobins(): void
     {
         $this->settings->shouldReceive('get')->with('zai.last', -1)->andReturnValues([-1, 1, 2]);

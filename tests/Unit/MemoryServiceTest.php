@@ -4,14 +4,12 @@ namespace Zephyrisle\FlarumZaiBot\Tests\Unit;
 
 use Flarum\Settings\SettingsRepositoryInterface;
 use GuzzleHttp\Client;
-use GuzzleHttp\Exception\ClientException;
-use GuzzleHttp\Psr7\Request;
 use GuzzleHttp\Psr7\Response;
 use Mockery;
 use Mockery\Adapter\Phpunit\MockeryPHPUnitIntegration;
 use PHPUnit\Framework\TestCase;
+use Zephyrisle\FlarumZaiBot\Service\EmbeddingService;
 use Zephyrisle\FlarumZaiBot\Service\MemoryService;
-use Zephyrisle\FlarumZaiBot\Service\ProviderService;
 
 class MemoryServiceTest extends TestCase
 {
@@ -31,27 +29,22 @@ class MemoryServiceTest extends TestCase
 
     protected function service(): MemoryService
     {
-        return new MemoryService($this->settings, $this->client, new ProviderService($this->settings));
+        return new MemoryService($this->settings, new EmbeddingService($this->settings, $this->client));
     }
 
     /**
-     * 默认 embedding 相关设置：通过供应商配置提供 embedding 端点。
-     * ProviderService 会读取这些设置来构建端点列表。
+     * 独立 Embedding 配置（不再复用 LLM 供应商列表）。
      */
-    protected function stubEmbeddingSettings(string $apiKeys = 'k1,k2'): void
+    protected function stubEmbeddingSettings(string $apiKey = 'jina-key'): void
     {
-        $this->settings->shouldReceive('get')->andReturnUsing(function (string $key, mixed $default = null) use ($apiKeys) {
+        $this->settings->shouldReceive('get')->andReturnUsing(function (string $key, mixed $default = null) use ($apiKey) {
             return match ($key) {
-                'flarum-zai-bot.providers' => json_encode([
-                    ['name' => 'Default', 'api_url' => 'https://api.openai.com/v1', 'api_keys' => $apiKeys],
-                ]),
-                'flarum-zai-bot.embedding_model' => 'text-embedding-3-small',
-                'flarum-zai-bot.last_embedding_key_index' => -1,
+                'flarum-zai-bot.embedding_api_url' => 'https://api.jina.ai/v1',
+                'flarum-zai-bot.embedding_api_key' => $apiKey,
+                'flarum-zai-bot.embedding_model' => 'jina-embeddings-v3',
                 default => $default,
             };
         });
-
-        $this->settings->shouldReceive('set')->byDefault()->andReturnNull();
     }
 
     public function testIsAvailableReturnsFalseWithoutPgvectorHost(): void
@@ -78,6 +71,14 @@ class MemoryServiceTest extends TestCase
 
         $this->client->shouldReceive('post')
             ->once()
+            ->with('https://api.jina.ai/v1/embeddings', Mockery::on(function (array $options) {
+                $payload = $options['json'] ?? [];
+                // Jina 适配：v3 模型携带 task=text-matching 与显式 dimensions
+                return ($payload['model'] ?? '') === 'jina-embeddings-v3'
+                    && ($payload['task'] ?? '') === 'text-matching'
+                    && ($payload['dimensions'] ?? 0) === 1024
+                    && ($options['headers']['Authorization'] ?? '') === 'Bearer jina-key';
+            }))
             ->andReturn(new Response(200, [], json_encode([
                 'data' => [['embedding' => [0.1, 0.2, 0.3]]],
             ])));
@@ -87,64 +88,20 @@ class MemoryServiceTest extends TestCase
         $this->assertSame([0.1, 0.2, 0.3], $embedding);
     }
 
-    public function testGenerateEmbeddingSkipsDepletedKeyAndRemovesIt(): void
+    public function testGenerateEmbeddingReturnsNullWithoutKey(): void
     {
-        $this->stubEmbeddingSettings();
-
-        // First key: 402 with a quota message → treated as depleted
-        $this->client->shouldReceive('post')
-            ->once()
-            ->andThrow(new ClientException(
-                'quota exceeded',
-                new Request('POST', 'https://api.openai.com/v1/embeddings'),
-                new Response(402, [], json_encode(['error' => ['message' => 'insufficient_quota']]))
-            ));
-
-        // Second key: success
-        $this->client->shouldReceive('post')
-            ->once()
-            ->andReturn(new Response(200, [], json_encode([
-                'data' => [['embedding' => [9.9]]],
-            ])));
-
-        // Depleted key 'k1' is removed from the provider's keys via ProviderService
-        $this->settings->shouldReceive('set')
-            ->with('flarum-zai-bot.providers', Mockery::on(function (string $json) {
-                $decoded = json_decode($json, true);
-                return ($decoded[0]['api_keys'] ?? '') === 'k2';
-            }))
-            ->once();
-
-        $embedding = $this->service()->generateEmbedding('hello');
-
-        $this->assertSame([9.9], $embedding);
-    }
-
-    public function testGenerateEmbeddingContinuesOnEmptyResult(): void
-    {
-        $this->stubEmbeddingSettings();
-
-        // First key responds 200 but without usable embedding data
-        $this->client->shouldReceive('post')
-            ->once()
-            ->andReturn(new Response(200, [], json_encode(['data' => []])));
-
-        // Second key returns a proper embedding (1.5 keeps its float type through json_encode/decode)
-        $this->client->shouldReceive('post')
-            ->once()
-            ->andReturn(new Response(200, [], json_encode([
-                'data' => [['embedding' => [1.5]]],
-            ])));
-
-        $embedding = $this->service()->generateEmbedding('hello');
-
-        $this->assertSame([1.5], $embedding);
-    }
-
-    public function testGenerateEmbeddingReturnsNullWithNoKeys(): void
-    {
-        // 供应商未配置密钥 → 无可用端点
         $this->stubEmbeddingSettings('');
+
+        $this->assertNull($this->service()->generateEmbedding('hello'));
+    }
+
+    public function testGenerateEmbeddingReturnsNullOnApiError(): void
+    {
+        $this->stubEmbeddingSettings();
+
+        $this->client->shouldReceive('post')
+            ->once()
+            ->andThrow(new \Exception('Connection refused'));
 
         $this->assertNull($this->service()->generateEmbedding('hello'));
     }

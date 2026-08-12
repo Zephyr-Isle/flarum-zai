@@ -2,7 +2,7 @@ zephyrisle-flarum-zai-bot:
   admin:
     settings:
       providers_label: '供应商配置'
-      providers_help: '配置一个或多个 AI 供应商，按顺序尝试，失败自动回退到下一个；同一供应商的多个密钥也会自动故障转移与轮询。LLM 与 Embedding 请求共用此配置。'
+      providers_help: '配置一个或多个 AI 供应商，按顺序尝试，失败自动回退到下一个；同一供应商的多个密钥也会自动故障转移与轮询。仅 LLM 对话请求使用此配置；Embedding 使用下方独立的设置。'
       provider_name_placeholder: '例如 DeepSeek / OpenAI（可选）'
       provider_enabled_label: '启用'
       provider_move_up: '上移'
@@ -37,10 +37,14 @@ zephyrisle-flarum-zai-bot:
       jina_use_builtin_proxy_help: 请求经由本服务器转发（服务器无法直连 Jina 时使用）。需先启用 Jina 优化模式。
       openweather_key_label: OpenWeather API 密钥
       openweather_city_label: OpenWeather 城市
+      embedding_api_url_label: 'Embedding API 地址'
+      embedding_api_url_help: '默认使用 Jina AI（https://api.jina.ai/v1），也可填写任意 OpenAI 兼容的 Embedding 端点。'
+      embedding_api_key_label: 'Embedding API 密钥'
+      embedding_api_key_help: '与上方 LLM 供应商密钥相互独立，可在 jina.ai 免费申请。'
       embedding_model_label: Embedding 模型
-      embedding_model_help: '用于向量记忆（pgvector）的 Embedding 模型，使用上方供应商的地址与密钥。'
+      embedding_model_help: '用于向量记忆（pgvector）的 Embedding 模型。默认 jina-embeddings-v3（1024 维，须与 pgvector 列维度一致）。其他 Jina 模型维度可能不同（如 v2 为 768），将无法写入 1024 维的列。'
       pgvector_host_label: 'PostgreSQL 主机（用于 pgvector 记忆，留空禁用）'
-      pgvector_host_help: '需要 pgvector 扩展。向量维度须与模型一致（默认 1536）。'
+      pgvector_host_help: '需要 pgvector 扩展。向量维度须与模型一致（jina-embeddings-v3 为 1024）。'
       pgvector_port_label: PostgreSQL 端口
       pgvector_db_label: PostgreSQL 数据库名
       pgvector_user_label: PostgreSQL 用户名

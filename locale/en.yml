@@ -2,7 +2,7 @@ zephyrisle-flarum-zai-bot:
   admin:
     settings:
       providers_label: 'Providers'
-      providers_help: 'Configure one or more AI providers. They are tried in order; if one fails the next is used automatically. Multiple keys on the same provider also fail over and are used round-robin. Both LLM and Embedding requests use this configuration.'
+      providers_help: 'Configure one or more AI providers. They are tried in order; if one fails the next is used automatically. Multiple keys on the same provider also fail over and are used round-robin. LLM chat requests use this configuration; Embedding has its own independent settings below.'
       provider_name_placeholder: 'e.g. DeepSeek / OpenAI (optional)'
       provider_enabled_label: 'Enabled'
       provider_move_up: 'Move up'
@@ -37,10 +37,14 @@ zephyrisle-flarum-zai-bot:
       jina_use_builtin_proxy_help: Requests go through this server (useful when the server cannot reach Jina directly). Requires Jina Optimization Mode to be enabled.
       openweather_key_label: OpenWeather API Key
       openweather_city_label: OpenWeather City
+      embedding_api_url_label: 'Embedding API URL'
+      embedding_api_url_help: 'Defaults to Jina AI (https://api.jina.ai/v1). Any OpenAI-compatible embeddings endpoint works.'
+      embedding_api_key_label: 'Embedding API Key'
+      embedding_api_key_help: 'Independent from the LLM provider keys above. Get a free key at jina.ai.'
       embedding_model_label: Embedding Model
-      embedding_model_help: 'Embedding model used for vector memory (pgvector). Uses the URL and keys of the providers above.'
+      embedding_model_help: 'Embedding model for vector memory (pgvector). Defaults to Jina jina-embeddings-v3 (1024 dims, must match the pgvector column). Other Jina models may output different dimensions (e.g. v2 = 768) and would not fit the 1024-dim column.'
       pgvector_host_label: 'PostgreSQL Host (for pgvector memory, leave empty to disable)'
-      pgvector_host_help: 'Requires the pgvector extension. Embedding dimension must match the model (default 1536).'
+      pgvector_host_help: 'Requires the pgvector extension. Embedding dimension must match the model (jina-embeddings-v3 = 1024).'
       pgvector_port_label: PostgreSQL Port
       pgvector_db_label: PostgreSQL Database
       pgvector_user_label: PostgreSQL User

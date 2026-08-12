@@ -30,7 +30,9 @@ return [
         ->default('flarum-zai-bot.jina_use_builtin_proxy', false)
         ->default('flarum-zai-bot.message_reply_enabled', false)
         ->default('flarum-zai-bot.random_reply_chance', 0)
-        ->default('flarum-zai-bot.reply_cooldown', 30),
+        ->default('flarum-zai-bot.reply_cooldown', 30)
+        ->default('flarum-zai-bot.embedding_api_url', \Zephyrisle\FlarumZaiBot\Service\EmbeddingService::DEFAULT_API_URL)
+        ->default('flarum-zai-bot.embedding_model', \Zephyrisle\FlarumZaiBot\Service\EmbeddingService::DEFAULT_MODEL),
 
     (new Extend\Model(\Zephyrisle\FlarumZaiBot\Model\BotAffinity::class)),
 

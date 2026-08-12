@@ -3,20 +3,20 @@
 namespace Zephyrisle\FlarumZaiBot\Api\Controller;
 
 use Flarum\Http\RequestUtil;
-use Flarum\Settings\SettingsRepositoryInterface;
 use GuzzleHttp\Client;
 use Laminas\Diactoros\Response\JsonResponse;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface;
+use Zephyrisle\FlarumZaiBot\Service\EmbeddingService;
 use Zephyrisle\FlarumZaiBot\Service\ProviderService;
 
 class TestApiController implements RequestHandlerInterface
 {
     public function __construct(
-        protected SettingsRepositoryInterface $settings,
         protected Client $client,
-        protected ProviderService $providers
+        protected ProviderService $providers,
+        protected EmbeddingService $embeddings
     ) {}
 
     public function handle(ServerRequestInterface $request): ResponseInterface
@@ -47,7 +47,7 @@ class TestApiController implements RequestHandlerInterface
      */
     protected function testLlm(string $customKeys, string $customUrl): array
     {
-        $endpoints = $this->endpointsForTest($customKeys, $customUrl, false);
+        $endpoints = $this->endpointsForTest($customKeys, $customUrl);
 
         if (empty($endpoints)) {
             return ['success' => false, 'error' => 'No API keys configured', 'items' => []];
@@ -95,49 +95,51 @@ class TestApiController implements RequestHandlerInterface
         ];
     }
 
+    /**
+     * Embedding 使用独立的 EmbeddingService 配置（不与 LLM 供应商同步），
+     * 完全适配 Jina AI；也可传入自定义 url/keys 做临时测试。
+     */
     protected function testEmbedding(string $customKeys, string $customUrl): array
     {
-        $endpoints = $this->endpointsForTest($customKeys, $customUrl, true);
+        $custom = $customKeys !== '' || $customUrl !== '';
+        $url = $customUrl !== '' ? rtrim($customUrl, '/') : $this->embeddings->apiUrl();
+        $keys = $customKeys !== '' ? array_values(array_filter(array_map('trim', explode(',', $customKeys)))) : [];
+        $key = $keys[0] ?? $this->embeddings->apiKey();
 
-        if (empty($endpoints)) {
-            return ['success' => false, 'error' => 'No embedding API keys configured', 'items' => []];
+        if ($key === '') {
+            return ['success' => false, 'error' => 'No embedding API key configured', 'items' => []];
         }
 
-        $model = $this->settings->get('flarum-zai-bot.embedding_model', 'text-embedding-3-small');
-
+        $name = $custom ? 'Custom' : 'Embedding';
         $items = [];
-        foreach ($endpoints as $endpoint) {
-            try {
-                $response = $this->client->post(rtrim($endpoint['api_url'], '/') . '/embeddings', [
-                    'headers' => [
-                        'Authorization' => 'Bearer ' . $endpoint['api_key'],
-                        'Content-Type' => 'application/json',
-                        'Accept' => 'application/json',
-                    ],
-                    'json' => [
-                        'model' => $model,
-                        'input' => 'Test',
-                    ],
-                    'timeout' => 15,
-                ]);
 
-                $body = json_decode($response->getBody(), true);
-                $embedding = $body['data'][0]['embedding'] ?? null;
+        try {
+            $response = $this->client->post($url . '/embeddings', [
+                'headers' => [
+                    'Authorization' => 'Bearer ' . $key,
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'application/json',
+                ],
+                'json' => $this->embeddings->payload('Test'),
+                'timeout' => 15,
+            ]);
 
-                $items[] = [
-                    'name' => $endpoint['name'],
-                    'model' => $model,
-                    'success' => true,
-                    'dimensions' => $embedding ? count($embedding) : 0,
-                ];
-            } catch (\Exception $e) {
-                $items[] = [
-                    'name' => $endpoint['name'],
-                    'model' => $model,
-                    'success' => false,
-                    'error' => $e->getMessage(),
-                ];
-            }
+            $body = json_decode($response->getBody(), true);
+            $embedding = $body['data'][0]['embedding'] ?? null;
+
+            $items[] = [
+                'name' => $name,
+                'model' => $this->embeddings->model(),
+                'success' => true,
+                'dimensions' => $embedding ? count($embedding) : 0,
+            ];
+        } catch (\Exception $e) {
+            $items[] = [
+                'name' => $name,
+                'model' => $this->embeddings->model(),
+                'success' => false,
+                'error' => $e->getMessage(),
+            ];
         }
 
         return [
@@ -147,9 +149,9 @@ class TestApiController implements RequestHandlerInterface
     }
 
     /**
-     * 自定义测试（给了 keys 或 url）时构建临时端点列表；否则使用已配置的供应商端点。
+     * 自定义测试（给了 keys 或 url）时构建临时 LLM 端点列表；否则使用已配置的 LLM 供应商端点。
      */
-    protected function endpointsForTest(string $customKeys, string $customUrl, bool $embedding): array
+    protected function endpointsForTest(string $customKeys, string $customUrl): array
     {
         if ($customKeys !== '' || $customUrl !== '') {
             // 旧版 api_url / model 设置已删除，自定义测试使用硬编码默认值
@@ -158,9 +160,8 @@ class TestApiController implements RequestHandlerInterface
 
             $keys = $customKeys !== '' ? array_values(array_filter(array_map('trim', explode(',', $customKeys)))) : [];
             if (empty($keys)) {
-                // 只给了 URL 没给密钥：复用已配置的对应类型端点密钥
-                $endpoints = $embedding ? $this->providers->embeddingEndpoints() : $this->providers->chatEndpoints();
-                $keys = array_column($endpoints, 'api_key');
+                // 只给了 URL 没给密钥：复用已配置的 LLM 端点密钥
+                $keys = array_column($this->providers->chatEndpoints(), 'api_key');
             }
 
             return array_map(fn (string $key) => [
@@ -171,6 +172,6 @@ class TestApiController implements RequestHandlerInterface
             ], $keys);
         }
 
-        return $embedding ? $this->providers->embeddingEndpoints() : $this->providers->chatEndpoints();
+        return $this->providers->chatEndpoints();
     }
 }

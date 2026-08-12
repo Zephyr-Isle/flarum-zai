@@ -83,7 +83,15 @@ Providers are tried in order; when one fails the next is used automatically. Key
 
 Legacy `api_url` / `api_keys` / `model` settings are removed from the admin UI. If they were configured before upgrading, they are imported into the editor on first visit — just review and save. For backward compatibility, provider entries without a `model` (e.g. older JSON configs) fall back to the legacy `model` setting if it still exists in the database, otherwise `gpt-4o-mini`.
 
-Embedding requests reuse the same provider list (URL and keys) together with the global `embedding_model` setting.
+### Embedding (Jina)
+
+Embedding is configured **independently** from the LLM providers above — it has its own API URL, API key and model:
+
+- `embedding_api_url` (default `https://api.jina.ai/v1`) — any OpenAI-compatible embeddings endpoint works
+- `embedding_api_key` — separate from LLM provider keys
+- `embedding_model` (default `jina-embeddings-v3`) — Jina-adapted: requests send `task=text-matching` and `dimensions=1024` for retrieval-optimized vectors
+
+The pgvector `bot_memories.embedding` column is `vector(1024)` and must match the model's output dimension (Jina `jina-embeddings-v3` outputs 1024 dims by default).
 
 ### Optional Settings
 | Setting | Key | Default | Description |
