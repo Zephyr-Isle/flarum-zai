@@ -5,10 +5,10 @@ import AffinitiesPage from './components/AffinitiesPage';
 const t = (key: string, params?: any) => app.translator.trans('zephyrisle-flarum-zai-bot.admin.settings.' + key, params);
 
 export default [
-    // 显式指定 context，确保 registry 的命名空间与扩展 id（zephyrisle-flarum-zai-bot）
+    // 显式指定 context，确保 registry 的命名空间与扩展 id（zephyrisle-zai-bot）
     // 一致。若不指定，将回退到运行时的 flarum.extensions 键（部分 Flarum 版本
     // 使用 vendor/package 斜杠形式），导致设置项注册到错误的命名空间而无设置项显示。
-    new Extend.Admin('zephyrisle-flarum-zai-bot')
+    new Extend.Admin('zephyrisle-zai-bot')
         // 供应商图形化配置（ProvidersSettings）由自定义页 AffinitiesPage 直接渲染，
         // 内部读写 flarum-zai-bot.providers（JSON），随设置表单一起保存。
         .setting(() => ({
