@@ -119,4 +119,69 @@ class MemoryServiceTest extends TestCase
 
         $this->assertSame([], $this->service()->searchMemories(1, [0.1, 0.2]));
     }
+
+    public function testSearchMemoriesAcceptsHybridQuery(): void
+    {
+        $this->settings->shouldReceive('get')->with('flarum-zai-bot.pgvector_host')->andReturn(null);
+
+        // 关键词路参数在服务不可用时也不会抛错
+        $this->assertSame([], $this->service()->searchMemories(1, [0.1, 0.2], 5, '用户喜欢什么咖啡'));
+    }
+
+    public function testStoreMemoryWithOptionsReturnsFalseWhenUnavailable(): void
+    {
+        $this->settings->shouldReceive('get')->with('flarum-zai-bot.pgvector_host')->andReturn(null);
+
+        $this->assertFalse($this->service()->storeMemory(1, '内容', [0.1, 0.2], [
+            'importance' => 3,
+            'ttl_days' => 30,
+            'source_text' => '来源',
+        ]));
+    }
+
+    public function testArchiveAndRestoreReturnFalseWhenUnavailable(): void
+    {
+        $this->settings->shouldReceive('get')->with('flarum-zai-bot.pgvector_host')->andReturn(null);
+
+        $service = $this->service();
+
+        $this->assertFalse($service->archiveMemory(1));
+        $this->assertFalse($service->restoreMemory(1));
+        $this->assertFalse($service->deleteMemory(1));
+        $this->assertNull($service->getMemory(1));
+    }
+
+    public function testVectorWeightDefaultsToSixtyPercent(): void
+    {
+        $this->settings->shouldReceive('get')->with('flarum-zai-bot.memory_hybrid_vector_weight', 60)->andReturn(60);
+
+        $this->assertEqualsWithDelta(0.6, $this->service()->vectorWeight(), 0.001);
+    }
+
+    public function testVectorWeightClampsToRange(): void
+    {
+        // 使用队列模拟多次不同取值（Mockery 对同一参数只保留首个返回值）
+        $this->settings->shouldReceive('get')
+            ->with('flarum-zai-bot.memory_hybrid_vector_weight', 60)
+            ->andReturn(150, -20, -20);
+
+        $service = $this->service();
+
+        $this->assertEqualsWithDelta(1.0, $service->vectorWeight(), 0.001);
+        $this->assertEqualsWithDelta(0.0, $service->vectorWeight(), 0.001);
+    }
+
+    public function testDecayDaysDefaultsToThirty(): void
+    {
+        $this->settings->shouldReceive('get')->with('flarum-zai-bot.memory_decay_days', 30)->andReturn(30);
+
+        $this->assertSame(30, $this->service()->decayDays());
+    }
+
+    public function testDecayDaysClampsToAtLeastOne(): void
+    {
+        $this->settings->shouldReceive('get')->with('flarum-zai-bot.memory_decay_days', 30)->andReturn(0);
+
+        $this->assertSame(1, $this->service()->decayDays());
+    }
 }

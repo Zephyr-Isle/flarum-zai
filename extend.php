@@ -14,7 +14,17 @@ return [
         ->css(__DIR__ . '/less/admin.less'),
 
     (new Extend\Event())
-        ->listen(Flarum\Post\Event\Posted::class, ReplyToPost::class),
+        ->listen(Flarum\Post\Event\Posted::class, ReplyToPost::class)
+        // 上下文注入：事件记录（帖子撤回/恢复/删除/编辑，讨论创建/改名/隐藏/恢复/删除）
+        ->listen(Flarum\Post\Event\Hidden::class, [\Zephyrisle\FlarumZaiBot\Listener\RecordContextEvent::class, 'onPostHidden'])
+        ->listen(Flarum\Post\Event\Restored::class, [\Zephyrisle\FlarumZaiBot\Listener\RecordContextEvent::class, 'onPostRestored'])
+        ->listen(Flarum\Post\Event\Deleted::class, [\Zephyrisle\FlarumZaiBot\Listener\RecordContextEvent::class, 'onPostDeleted'])
+        ->listen(Flarum\Post\Event\Revised::class, [\Zephyrisle\FlarumZaiBot\Listener\RecordContextEvent::class, 'onPostRevised'])
+        ->listen(Flarum\Discussion\Event\Started::class, [\Zephyrisle\FlarumZaiBot\Listener\RecordContextEvent::class, 'onDiscussionStarted'])
+        ->listen(Flarum\Discussion\Event\Renamed::class, [\Zephyrisle\FlarumZaiBot\Listener\RecordContextEvent::class, 'onDiscussionRenamed'])
+        ->listen(Flarum\Discussion\Event\Hidden::class, [\Zephyrisle\FlarumZaiBot\Listener\RecordContextEvent::class, 'onDiscussionHidden'])
+        ->listen(Flarum\Discussion\Event\Restored::class, [\Zephyrisle\FlarumZaiBot\Listener\RecordContextEvent::class, 'onDiscussionRestored'])
+        ->listen(Flarum\Discussion\Event\Deleted::class, [\Zephyrisle\FlarumZaiBot\Listener\RecordContextEvent::class, 'onDiscussionDeleted']),
 
     (new Extend\Conditional())
         ->whenExtensionEnabled('flarum-messages', fn () => [
@@ -32,7 +42,34 @@ return [
         ->default('flarum-zai-bot.random_reply_chance', 0)
         ->default('flarum-zai-bot.reply_cooldown', 30)
         ->default('flarum-zai-bot.embedding_api_url', \Zephyrisle\FlarumZaiBot\Service\EmbeddingService::DEFAULT_API_URL)
-        ->default('flarum-zai-bot.embedding_model', \Zephyrisle\FlarumZaiBot\Service\EmbeddingService::DEFAULT_MODEL),
+        ->default('flarum-zai-bot.embedding_model', \Zephyrisle\FlarumZaiBot\Service\EmbeddingService::DEFAULT_MODEL)
+        // 智能唤醒（提及规则 / 相关性 / 专业答疑 / 无聊唤醒）
+        ->default('flarum-zai-bot.wake_mention_rules_enabled', false)
+        ->default('flarum-zai-bot.wake_relevance_enabled', false)
+        ->default('flarum-zai-bot.wake_expert_enabled', false)
+        ->default('flarum-zai-bot.wake_boredom_enabled', false)
+        // 请求编排：硬等待消息合并
+        ->default('flarum-zai-bot.wake_merge_seconds', 0)
+        ->default('flarum-zai-bot.wake_merge_max', 5)
+        ->default('flarum-zai-bot.wake_merge_require_wake', false)
+        // 媒体解析
+        ->default('flarum-zai-bot.media_link_parse_enabled', false)
+        ->default('flarum-zai-bot.media_link_timeout', 8)
+        ->default('flarum-zai-bot.media_link_max_bytes', 524288)
+        ->default('flarum-zai-bot.media_link_max_links', 2)
+        ->default('flarum-zai-bot.media_file_parse_enabled', false)
+        ->default('flarum-zai-bot.media_image_classify_enabled', true)
+        // 上下文注入（注入时机 / 事件记录 / 格式与截断）
+        ->default('flarum-zai-bot.ctx_inject_timing', 'proactive')
+        ->default('flarum-zai-bot.ctx_event_record_enabled', true)
+        ->default('flarum-zai-bot.ctx_format', 'concise')
+        ->default('flarum-zai-bot.ctx_entry_max_chars', 200)
+        ->default('flarum-zai-bot.ctx_max_events', 10)
+        // 记忆系统（记忆原子 + 混合检索）
+        ->default('flarum-zai-bot.memory_hybrid_vector_weight', 60)
+        ->default('flarum-zai-bot.memory_decay_days', 30),
+
+    (new Extend\Model(\Zephyrisle\FlarumZaiBot\Model\ContextEvent::class)),
 
     (new Extend\Model(\Zephyrisle\FlarumZaiBot\Model\BotAffinity::class)),
 
@@ -43,5 +80,7 @@ return [
     (new Extend\Routes('api'))
         ->get('/zai-bot/affinities', 'zai-bot.affinities', \Zephyrisle\FlarumZaiBot\Api\Controller\ListAffinitiesController::class)
         ->post('/zai-bot/test-api', 'zai-bot.test-api', \Zephyrisle\FlarumZaiBot\Api\Controller\TestApiController::class)
-        ->get('/zai-bot/jina-proxy', 'zai-bot.jina-proxy', \Zephyrisle\FlarumZaiBot\Api\Controller\JinaProxyController::class),
+        ->get('/zai-bot/jina-proxy', 'zai-bot.jina-proxy', \Zephyrisle\FlarumZaiBot\Api\Controller\JinaProxyController::class)
+        // 免鉴权图片代理：供 AI 模型视觉 API 拉取 fof/upload 的私有图片（见 ImageExtractor / VisionImageController）
+        ->get('/zai-bot/vision-image/{uuid}', 'zai-bot.vision-image', \Zephyrisle\FlarumZaiBot\Api\Controller\VisionImageController::class),
 ];

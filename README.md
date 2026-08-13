@@ -12,7 +12,47 @@ An AI-powered bot extension for [Flarum](https://flarum.org) that automatically 
 ### AI Integration
 - **Multi-provider with automatic failover**: configure any number of providers in a graphical editor in the admin panel (each with its own URL, keys and model); if one provider/key fails, the next is tried automatically, and successful endpoints are used round-robin
 - Full **tool calling** loop - multi-round tool use for complex tasks
+- **Image recognition (vision)**: when a provider is marked as vision-capable, images in the user's post/private message **and in the recent conversation history** are sent to the model (OpenAI-compatible `image_url` content, with captions identifying which message each history image came from), so the bot can see and describe them. Up to 4 images from the current message and 3 from history are included. Images uploaded via `fof/upload` are served through a built-in proxy endpoint (their download route requires the `fof-upload.download` permission, which AI API servers cannot pass), so private/logged-in-only images still work
 - **Personality presets**: `friendly`, `tsundere`, `loli`, `cool`, or `custom` (raw system prompt)
+
+### Smart Wake (Proactive Participation)
+The bot no longer waits passively to be mentioned — it can proactively join conversations based on context. All trigger detection is local heuristics (no extra model calls), mapped to forum discussions:
+
+- **Explicit / empty mention**: `@AIGirl` always triggers
+- **Mention rules**: keyword or `re:` regex rules, scoped to discussions and users — `关键词 @g:123 @u:10001`, blacklist with `!` (`@g:!456`)
+- **Probability wake**: existing `Random Reply Chance` setting
+- **Relevance wake**: follows up when the new post overlaps the recent topic; denoises ultra-short messages and questions, and picks history length based on message length
+- **Expert Q&A**: two-stage detection (question threshold + help keywords) for professional help requests
+- **Boredom wake**: detects cold-scene / chat-seeking signals, with a length filter to avoid long narratives
+- **Rhythm optimization**: downweights non-bot-directed signals (mentioning others, replying to another post, repeating a context snippet), and gives a small silence bonus when the bot hasn't participated for a long time
+
+Wake types (relevance / expert / boredom) are individually toggled in the admin panel and are off by default.
+
+### Request Orchestration (Message Merging)
+- **Hard-wait merge**: with a merge window configured, the reply job is delayed so posts arriving in the window are collected into one request (saves tokens; the merged posts are presented to the AI as one batch)
+- **Merge limit**: max messages per request; merged messages may optionally be required to satisfy wake conditions themselves
+- **Dynamic recompute**: if newer posts arrive while a reply is being generated, the current result is dropped and the newer post's job recomputes the context
+- **Final validation & concurrency**: hidden/recalled posts are filtered out before replying (all invalid → request cancelled), and covering-reply checks prevent duplicate replies from concurrent jobs
+
+### Media Parsing
+The bot can understand the *content* of what's posted, not just the text:
+
+- **Link parsing** (`media_link_parse_enabled`): links in posts/messages are fetched server-side and their page title + summary are injected into context. Includes SSRF protection (private IPs / localhost blocked), a domain blacklist, configurable timeout / download-size / per-message link limits, and 24h caching
+- **File parsing** (`media_file_parse_enabled`): fof/upload files referenced in a post inject their filename and size; the beginning of text files is read and PDF text is best-effort extracted (uncompressed PDFs only). Results cached for 30 days
+- **Image type labeling** (`media_image_classify_enabled`): when sending images to the vision model, emoji / GIF / sticker images are labeled so the model knows it's a sticker rather than a photo
+- **Media-only messages**: a post or private message containing only media (no text) gets a text anchor (「用户发布了一条纯媒体消息」) so the AI still responds meaningfully; private-message media always triggers a reply
+
+> Video frame extraction, audio transcription (ASR), QQ-style forwarded-message / JSON-card parsing are **not** included — they require server-side ffmpeg/ASR providers and QQ-specific message types that don't exist on Flarum. GIFs are sent directly to the vision model (OpenAI-compatible APIs accept GIF input).
+
+### Context Injection (Scenario & Identity)
+Before replying, the bot can inject a scenario/identity context block and recent discussion events so the model knows *where* the conversation is happening and *what has happened*:
+
+- **Injection timing** (`ctx_inject_timing`): `proactive` (inject before probability/relevance/expert/boredom wakes, not explicit mentions/rules), `all` (inject before every reply), or `off`. Private messages always inject unless set to `off`
+- **Event recording** (`ctx_event_record_enabled`): forum events — post hidden (撤回) / restored / deleted / revised, discussion started / renamed / hidden / restored / deleted — are written to a `bot_context_events` log and injected per discussion
+- **Environment fields**: platform, channel type, discussion ID/title, current time + weekday, sender user ID, nickname, and user groups are always included in the block
+- **Injection format** (`ctx_format`): `concise` (one line per entry) or `detailed` (adds `msg_id`, event type, actor); per-entry truncation via `ctx_entry_max_chars` (default 200) and max events via `ctx_max_events` (default 10)
+
+> QQ-specific context events (mutes, join/leave, poke, essence, join requests) and the `/清除上下文` quick-clear command are not applicable to Flarum and are excluded.
 
 ### Time & Weather Awareness
 - Auto-injects current date, time, weekday, and Chinese holiday info into system prompt
@@ -78,6 +118,7 @@ Configure providers in the **graphical editor** at the top of the ZAI Bot admin 
 - `api_keys` (required): comma-separated keys with automatic failover
 - `model` (required): model to use for this provider
 - `enabled`: toggle to temporarily disable a provider
+- `vision`: toggle if the model supports image input (vision). When enabled, images posted by users in forum posts or private messages are sent to the model for recognition; providers without vision fall back to text-only automatically
 
 Providers are tried in order; when one fails the next is used automatically. Keys within a provider also fail over, and all endpoints are used round-robin. You can reorder providers with the arrow buttons. Settings are stored as JSON in the `flarum-zai-bot.providers` setting.
 
@@ -93,9 +134,44 @@ Embedding is configured **independently** from the LLM providers above — it ha
 
 The pgvector `bot_memories.embedding` column is `vector(1024)` and must match the model's output dimension (Jina `jina-embeddings-v3` outputs 1024 dims by default).
 
+### Memory System (Atoms + Hybrid Retrieval)
+
+Memories are stored as **independent atoms** in `bot_memories`, each with its own importance, TTL, reinforcement counter, last-access timestamp, archived flag, and original source text:
+
+- **Memory atoms**: every row has `importance` (0-10, boosted when recalled), `ttl_days`/`expires_at` (expired atoms stop being recalled), `reinforce_count`, `last_accessed_at` (drives time decay), `archived_at` (archived atoms are hidden but recoverable), and `source_text`/`source_meta` (keeps the original message for verification)
+- **Hybrid retrieval** (`searchMemories`): semantic path (pgvector cosine similarity top-K) and keyword path (BM25 over query tokens via ILIKE candidates) run in parallel; the two ranked lists are normalized and fused with a configurable weight (`memory_hybrid_vector_weight`, default 60% vector / 40% keyword)
+- **Dynamic context**: the fused score is adjusted by importance boost and time decay (`memory_decay_days`, default 30); expired/archived memories are excluded from recall
+- **Reinforcement**: every successful recall bumps `importance` +1 (capped at 10) and refreshes `last_accessed_at`
+- **Archive & restore**: low-value memories can be archived (hidden from recall) and restored later instead of being hard-deleted; `archiveMemory` / `restoreMemory` / `deleteMemory` / `getMemory` are available programmatically
+- **Agent-native tools**: the model can actively recall (`recall_long_term_memory`) and write (`memorize_long_term_memory`, with optional importance/TTL and source retention) memories through the tool system — both registered only when the memory system is available
+
+> The memory graph canvas, per-session/user/global scoping, admin management UI, and background index rebuild are not included in this round.
+
 ### Optional Settings
 | Setting | Key | Default | Description |
 |---------|-----|---------|-------------|
+| Mention wake rules | `wake_mention_rules_enabled` | `false` | Enable keyword/regex wake rules |
+| Mention wake rules text | `wake_mention_rules` | - | One rule per line; `re:` regex; `@g:`/`@u:` scopes, `!` = blacklist |
+| Relevance wake | `wake_relevance_enabled` | `false` | Proactive follow-up on related topics |
+| Expert Q&A | `wake_expert_enabled` | `false` | Detect professional questions/help requests |
+| Boredom wake | `wake_boredom_enabled` | `false` | Detect cold-scene / chat-seeking signals |
+| Merge window (s) | `wake_merge_seconds` | `0` | >0 = collect posts in the window before one request |
+| Merge limit | `wake_merge_max` | `5` | Max messages merged into one request |
+| Merged messages must wake | `wake_merge_require_wake` | `false` | Merged posts must also satisfy wake conditions |
+| Link parsing | `media_link_parse_enabled` | `false` | Fetch link titles/summaries into context |
+| Link domain blacklist | `media_link_blacklist` | - | One domain per line to never fetch |
+| Link timeout (s) | `media_link_timeout` | `8` | Per-link request timeout |
+| Link size limit (B) | `media_link_max_bytes` | `524288` | Max page bytes read per link |
+| Max links per message | `media_link_max_links` | `2` | Links parsed per message (1-5) |
+| File parsing | `media_file_parse_enabled` | `false` | Inject fof/upload file names/sizes/previews |
+| Image type labeling | `media_image_classify_enabled` | `true` | Label emoji/GIF/sticker images for the model |
+| Context injection timing | `ctx_inject_timing` | `proactive` | `proactive` / `all` / `off` — when to inject scenario/identity + events |
+| Event recording | `ctx_event_record_enabled` | `true` | Record post/discussion events into the context log |
+| Injection format | `ctx_format` | `concise` | `concise` or `detailed` (adds msg_id/actor/type) |
+| Max chars per entry | `ctx_entry_max_chars` | `200` | Truncate each injected context entry |
+| Max events injected | `ctx_max_events` | `10` | Recent events included per reply (1-50) |
+| Hybrid vector weight | `memory_hybrid_vector_weight` | `60` | Vector share of hybrid retrieval (%) |
+| Memory decay period | `memory_decay_days` | `30` | Days per decay step for memory ranking |
 | Bot Username | `username` | `AIGirl` | Bot's Flarum username |
 | Random Reply Chance | `random_reply_chance` | `0` | Auto-reply without mention (%) |
 | Reply Decision Window | `reply_cooldown` | `30` | Within this window after the bot's last reply, the AI reviews the new context and decides on its own whether to reply again (`0` = always reply). Note: within this window each trigger consumes an API call even when the bot stays silent |

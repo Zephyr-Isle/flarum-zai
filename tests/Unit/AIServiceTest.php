@@ -339,6 +339,353 @@ class AIServiceTest extends TestCase
         $this->assertSame('final answer', $reply);
     }
 
+    public function testGenerateReplySendsImagesToVisionEndpoint(): void
+    {
+        $this->stubSettings([
+            'flarum-zai-bot.providers' => json_encode([
+                ['name' => 'Vision', 'api_url' => 'https://api.openai.com/v1', 'api_keys' => 'key-1', 'model' => 'gpt-4o', 'vision' => true],
+            ]),
+        ]);
+
+        $this->client->shouldReceive('post')
+            ->once()
+            ->with(
+                Mockery::on(fn ($uri) => is_string($uri)),
+                Mockery::on(function (array $options) {
+                    $messages = $options['json']['messages'] ?? [];
+                    $user = end($messages);
+
+                    if (!is_array($user['content'] ?? null)) {
+                        return false;
+                    }
+
+                    $types = array_column($user['content'], 'type');
+                    $hasText = in_array('text', $types, true) && str_contains($user['content'][0]['text'], '看图');
+                    $images = array_values(array_filter($user['content'], fn ($p) => ($p['type'] ?? '') === 'image_url'));
+
+                    return $hasText
+                        && count($images) === 2
+                        && $images[0]['image_url']['url'] === 'https://example.com/a.png'
+                        && $images[1]['image_url']['url'] === 'https://example.com/b.jpg';
+                })
+            )
+            ->andReturn(new Response(200, [], json_encode([
+                'choices' => [['message' => ['content' => '我看到了图片！']]],
+            ])));
+
+        $reply = $this->ai->generateReply('看看这张图', [
+            'images' => ['https://example.com/a.png', 'https://example.com/b.jpg', '/relative.png'],
+        ]);
+
+        $this->assertSame('我看到了图片！', $reply);
+    }
+
+    public function testGenerateReplyDropsImagesForNonVisionEndpoint(): void
+    {
+        $this->stubCommonSettings();
+
+        $this->client->shouldReceive('post')
+            ->once()
+            ->with(
+                Mockery::on(fn ($uri) => is_string($uri)),
+                Mockery::on(function (array $options) {
+                    $messages = $options['json']['messages'] ?? [];
+                    $user = end($messages);
+
+                    // 不支持的端点收到纯文本，图片被丢弃
+                    return is_string($user['content'] ?? null)
+                        && str_contains($user['content'], '看看这张图')
+                        && !str_contains(json_encode($messages, JSON_UNESCAPED_UNICODE), 'image_url');
+                })
+            )
+            ->andReturn(new Response(200, [], json_encode([
+                'choices' => [['message' => ['content' => '文字回复']]],
+            ])));
+
+        $reply = $this->ai->generateReply('看看这张图', [
+            'images' => ['https://example.com/a.png'],
+            'history_images' => [
+                ['url' => 'https://example.com/hist.png', 'author' => '小明', 'label' => '帖子 #3（小明）'],
+            ],
+        ]);
+
+        $this->assertSame('文字回复', $reply);
+    }
+
+    public function testGenerateReplySendsHistoryImagesWithCaptions(): void
+    {
+        $this->stubSettings([
+            'flarum-zai-bot.providers' => json_encode([
+                ['name' => 'Vision', 'api_url' => 'https://api.openai.com/v1', 'api_keys' => 'key-1', 'model' => 'gpt-4o', 'vision' => true],
+            ]),
+        ]);
+
+        $this->client->shouldReceive('post')
+            ->once()
+            ->with(
+                Mockery::on(fn ($uri) => is_string($uri)),
+                Mockery::on(function (array $options) {
+                    $messages = $options['json']['messages'] ?? [];
+                    $user = end($messages);
+                    $parts = $user['content'] ?? [];
+
+                    if (!is_array($parts) || ($parts[0]['type'] ?? '') !== 'text') {
+                        return false;
+                    }
+
+                    // 第一块说明当前消息与历史图片的总数
+                    if (!str_contains($parts[0]['text'], '本次对话共附带 3 张图片')) {
+                        return false;
+                    }
+
+                    $lastCurrentImageIndex = null;
+                    $historyIndex = null;
+                    foreach ($parts as $i => $part) {
+                        if (($part['type'] ?? '') === 'image_url'
+                            && ($part['image_url']['url'] ?? '') === 'https://example.com/current.png') {
+                            $lastCurrentImageIndex = $i;
+                        }
+                        if (($part['type'] ?? '') === 'text'
+                            && str_contains($part['text'] ?? '', '对话历史中的图片')
+                            && $historyIndex === null) {
+                            $historyIndex = $i;
+                        }
+                    }
+
+                    // 历史图片带说明文字、排在当前图片之后，且多张历史图片依次排列
+                    return $historyIndex !== null
+                        && $lastCurrentImageIndex !== null
+                        && $historyIndex > $lastCurrentImageIndex
+                        && ($parts[$historyIndex + 1]['type'] ?? '') === 'image_url'
+                        && ($parts[$historyIndex + 1]['image_url']['url'] ?? '') === 'https://example.com/history-1.png'
+                        && str_contains($parts[$historyIndex]['text'], '帖子 #5（小明）')
+                        && str_contains($parts[$historyIndex + 2]['text'] ?? '', '帖子 #6（小红）')
+                        && ($parts[$historyIndex + 3]['image_url']['url'] ?? '') === 'https://example.com/history-2.png';
+                })
+            )
+            ->andReturn(new Response(200, [], json_encode([
+                'choices' => [['message' => ['content' => '结合历史图片回答']]],
+            ])));
+
+        $reply = $this->ai->generateReply('继续聊这张图', [
+            'images' => ['https://example.com/current.png'],
+            'history_images' => [
+                ['url' => 'https://example.com/history-1.png', 'author' => '小明', 'label' => '帖子 #5（小明）'],
+                ['url' => 'https://example.com/history-2.png', 'author' => '小红', 'label' => '帖子 #6（小红）'],
+            ],
+        ]);
+
+        $this->assertSame('结合历史图片回答', $reply);
+    }
+
+    public function testGenerateReplyCapsHistoryImagesToMostRecent(): void
+    {
+        $this->stubSettings([
+            'flarum-zai-bot.providers' => json_encode([
+                ['name' => 'Vision', 'api_url' => 'https://api.openai.com/v1', 'api_keys' => 'key-1', 'model' => 'gpt-4o', 'vision' => true],
+            ]),
+        ]);
+
+        $this->client->shouldReceive('post')
+            ->once()
+            ->with(
+                Mockery::on(fn ($uri) => is_string($uri)),
+                Mockery::on(function (array $options) {
+                    $messages = $options['json']['messages'] ?? [];
+                    $all = json_encode($messages, JSON_UNESCAPED_UNICODE);
+
+                    // 只保留最近的 3 张历史图片（按时间正序传入，取最后 3 个）。
+                    // 用文件名匹配：json_encode 会把 / 转义为 \\/，直接匹配完整 URL 会失败。
+                    return str_contains($all, 'h-3.png')
+                        && str_contains($all, 'h-4.png')
+                        && str_contains($all, 'h-5.png')
+                        && !str_contains($all, 'h-1.png')
+                        && !str_contains($all, 'h-2.png')
+                        && str_contains($all, 'image_url');
+                })
+            )
+            ->andReturn(new Response(200, [], json_encode([
+                'choices' => [['message' => ['content' => 'ok']]],
+            ])));
+
+        $historyImages = [];
+        for ($i = 1; $i <= 5; $i++) {
+            $historyImages[] = ['url' => "https://example.com/h-{$i}.png", 'author' => '用户', 'label' => "帖子 #{$i}"];
+        }
+
+        $this->ai->generateReply('hi', ['history_images' => $historyImages]);
+    }
+
+    public function testGenerateReplyKeepsImagesAcrossToolCallRounds(): void
+    {
+        $this->stubSettings([
+            'flarum-zai-bot.providers' => json_encode([
+                ['name' => 'Vision', 'api_url' => 'https://api.openai.com/v1', 'api_keys' => 'key-1', 'model' => 'gpt-4o', 'vision' => true],
+            ]),
+        ]);
+
+        $tool = Mockery::mock(ToolInterface::class);
+        $tool->shouldReceive('getName')->andReturn('fake_tool');
+        $tool->shouldReceive('getDescription')->andReturn('A fake tool');
+        $tool->shouldReceive('getParameters')->andReturn(['type' => 'object', 'properties' => []]);
+        $tool->shouldReceive('execute')->once()->andReturn('tool-result');
+
+        $hasImageContent = function (array $options): bool {
+            $messages = $options['json']['messages'] ?? [];
+            $hasCurrent = false;
+            $hasHistory = false;
+            foreach ($messages as $m) {
+                if (($m['role'] ?? '') === 'user' && is_array($m['content'] ?? null)) {
+                    foreach ($m['content'] as $part) {
+                        if (($part['type'] ?? '') !== 'image_url') {
+                            continue;
+                        }
+                        if (($part['image_url']['url'] ?? '') === 'https://example.com/a.png') {
+                            $hasCurrent = true;
+                        }
+                        if (($part['image_url']['url'] ?? '') === 'https://example.com/hist.png') {
+                            $hasHistory = true;
+                        }
+                    }
+                }
+            }
+            return $hasCurrent && $hasHistory;
+        };
+
+        // 第一轮：带图片的请求，模型要求调用工具
+        $this->client->shouldReceive('post')
+            ->once()
+            ->with(Mockery::on(fn ($uri) => is_string($uri)), Mockery::on($hasImageContent))
+            ->andReturn(new Response(200, [], json_encode([
+                'choices' => [[
+                    'message' => [
+                        'content' => null,
+                        'tool_calls' => [[
+                            'id' => 'call_1',
+                            'type' => 'function',
+                            'function' => ['name' => 'fake_tool', 'arguments' => '{}'],
+                        ]],
+                    ],
+                ]],
+            ])));
+
+        // 第二轮（工具结果之后）：图片仍在请求中
+        $this->client->shouldReceive('post')
+            ->once()
+            ->with(Mockery::on(fn ($uri) => is_string($uri)), Mockery::on($hasImageContent))
+            ->andReturn(new Response(200, [], json_encode([
+                'choices' => [['message' => ['content' => '看完图片后的回答']]],
+            ])));
+
+        $reply = $this->ai->generateReply('描述这张图', [
+            'images' => ['https://example.com/a.png'],
+            'history_images' => [
+                ['url' => 'https://example.com/hist.png', 'author' => '小明', 'label' => '帖子 #3（小明）'],
+            ],
+        ], [$tool]);
+
+        $this->assertSame('看完图片后的回答', $reply);
+    }
+
+    public function testGenerateReplyInjectsMediaContext(): void
+    {
+        $this->stubCommonSettings();
+
+        $this->client->shouldReceive('post')
+            ->once()
+            ->with(
+                Mockery::on(fn ($uri) => is_string($uri)),
+                Mockery::on(function (array $options) {
+                    $messages = $options['json']['messages'] ?? [];
+                    return str_contains(json_encode($messages, JSON_UNESCAPED_UNICODE), '帖子中链接的内容摘要：\n- Test Page：A summary');
+                })
+            )
+            ->andReturn(new Response(200, [], json_encode([
+                'choices' => [['message' => ['content' => 'ok']]],
+            ])));
+
+        $reply = $this->ai->generateReply('hi', [
+            'media_context' => "帖子中链接的内容摘要：\n- Test Page：A summary",
+        ]);
+
+        $this->assertSame('ok', $reply);
+    }
+
+    public function testGenerateReplyInjectsContextBlock(): void
+    {
+        $this->stubCommonSettings();
+
+        $this->client->shouldReceive('post')
+            ->once()
+            ->with(
+                Mockery::on(fn ($uri) => is_string($uri)),
+                Mockery::on(function (array $options) {
+                    $messages = $options['json']['messages'] ?? [];
+                    return str_contains(json_encode($messages, JSON_UNESCAPED_UNICODE), '【讨论上下文】')
+                        && str_contains(json_encode($messages, JSON_UNESCAPED_UNICODE), '讨论标题：测试讨论')
+                        && str_contains(json_encode($messages, JSON_UNESCAPED_UNICODE), '近期事件');
+                })
+            )
+            ->andReturn(new Response(200, [], json_encode([
+                'choices' => [['message' => ['content' => 'ok']]],
+            ])));
+
+        $reply = $this->ai->generateReply('hi', [
+            'injected_context' => "【讨论上下文】\n- 讨论标题：测试讨论\n\n【近期事件】\n- 帖子 #45 被隐藏（撤回）",
+        ]);
+
+        $this->assertSame('ok', $reply);
+    }
+
+    public function testGenerateReplyLabelsGifAndStickerImages(): void
+    {
+        $this->stubSettings([
+            'flarum-zai-bot.providers' => json_encode([
+                ['name' => 'Vision', 'api_url' => 'https://api.openai.com/v1', 'api_keys' => 'key-1', 'model' => 'gpt-4o', 'vision' => true],
+            ]),
+        ]);
+
+        $this->client->shouldReceive('post')
+            ->once()
+            ->with(
+                Mockery::on(fn ($uri) => is_string($uri)),
+                Mockery::on(function (array $options) {
+                    $messages = $options['json']['messages'] ?? [];
+                    $user = end($messages);
+                    $parts = $user['content'] ?? [];
+
+                    // 找到 GIF 与贴纸的标注文字，且标注紧跟对应图片
+                    $gifIndex = null;
+                    $stickerIndex = null;
+                    foreach ($parts as $i => $part) {
+                        if (($part['type'] ?? '') === 'text' && ($part['text'] ?? '') === '（GIF 动图）') {
+                            $gifIndex = $i;
+                        }
+                        if (($part['type'] ?? '') === 'text' && ($part['text'] ?? '') === '（贴纸）') {
+                            $stickerIndex = $i;
+                        }
+                    }
+
+                    return $gifIndex !== null
+                        && $stickerIndex !== null
+                        && ($parts[$gifIndex + 1]['type'] ?? '') === 'image_url'
+                        && ($parts[$gifIndex + 1]['image_url']['url'] ?? '') === 'https://example.com/anim.gif'
+                        && ($parts[$stickerIndex + 1]['image_url']['url'] ?? '') === 'https://example.com/sticker/1.png';
+                })
+            )
+            ->andReturn(new Response(200, [], json_encode([
+                'choices' => [['message' => ['content' => 'ok']]],
+            ])));
+
+        $this->ai->generateReply('hi', [
+            'images' => [
+                'https://example.com/anim.gif',
+                'https://example.com/sticker/1.png',
+                'https://example.com/photo.jpg',
+            ],
+        ]);
+    }
+
     public function testParseSecretEvalUpdatesAffinityAndStripsBlock(): void
     {
         $reply = "今天聊得很开心！\n[Favour: 45, Attitude: 友善热情, Relationship: 普通朋友]";

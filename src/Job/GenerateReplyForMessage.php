@@ -11,6 +11,9 @@ use Zephyrisle\FlarumZaiBot\Job\Concerns\BuildsBotTools;
 use Zephyrisle\FlarumZaiBot\Job\Concerns\ManagesBotUser;
 use Zephyrisle\FlarumZaiBot\Model\BotAffinity;
 use Zephyrisle\FlarumZaiBot\Service\AIService;
+use Zephyrisle\FlarumZaiBot\Service\ImageExtractor;
+use Zephyrisle\FlarumZaiBot\Service\Media\FileParsingService;
+use Zephyrisle\FlarumZaiBot\Service\Media\LinkParsingService;
 use Zephyrisle\FlarumZaiBot\Service\MemoryService;
 use Zephyrisle\FlarumZaiBot\Service\PortraitService;
 
@@ -62,6 +65,7 @@ class GenerateReplyForMessage extends AbstractJob
         }
 
         $history = [];
+        $historyImages = [];
         $recentMessages = DialogMessage::where('dialog_id', $dialog->id)
             ->where('id', '<', $message->id)
             ->orderBy('id', 'desc')
@@ -71,10 +75,21 @@ class GenerateReplyForMessage extends AbstractJob
 
         foreach ($recentMessages as $prevMsg) {
             $prevAuthor = $prevMsg->user;
+            $msgId = $prevMsg->id;
+            $authorName = $prevAuthor ? $prevAuthor->display_name : '未知';
             $history[] = [
-                'author' => $prevAuthor ? $prevAuthor->display_name : '未知',
+                'author' => $authorName,
                 'content' => $prevMsg->content,
             ];
+
+            // 历史私信中的图片，供支持识图的模型参考（AIService 会按最近的优先截取）
+            foreach (ImageExtractor::fromHtml((string) $prevMsg->content, 1) as $imgUrl) {
+                $historyImages[] = [
+                    'url' => $imgUrl,
+                    'author' => $authorName,
+                    'label' => "私信消息 #{$msgId}（{$authorName}）",
+                ];
+            }
         }
 
         $affinity = null;
@@ -96,7 +111,8 @@ class GenerateReplyForMessage extends AbstractJob
                 if ($memoryService->isAvailable()) {
                     $embedding = $memoryService->generateEmbedding($message->content);
                     if ($embedding) {
-                        $memories = $memoryService->searchMemories($author->id, $embedding, 5);
+                        // 混合检索：向量 + BM25 关键词双路召回（query 供关键词路使用）
+                        $memories = $memoryService->searchMemories($author->id, $embedding, 5, (string) $message->content);
                     }
                 }
             } catch (\Exception $e) {
@@ -113,6 +129,10 @@ class GenerateReplyForMessage extends AbstractJob
             'portrait_summary' => $portraitSummary,
             'memories' => $memories,
             'conversation_history' => $history,
+            // 当前私信中的图片（http(s)/data URI），供支持识图的模型查看（见 AIService）
+            'images' => ImageExtractor::fromHtml((string) $message->content),
+            // 对话历史私信中的图片，让模型能结合更早的图片回答
+            'history_images' => $historyImages,
         ];
 
         if ($author) {
@@ -137,9 +157,34 @@ class GenerateReplyForMessage extends AbstractJob
             }
         }
 
+        // 纯媒体消息（只有图片没有文字）时给出文本锚点；私聊任何消息都会触发回复（媒体唤醒）
+        $plain = trim(strip_tags((string) $message->content));
+        $prompt = $plain !== '' ? $message->content : '（用户发送了一条纯媒体消息，请查看后回应）';
+
+        // ===== 媒体解析：链接摘要与文件信息注入 =====
+        $context['media_context'] = $this->buildMediaContext((string) $message->content, $settings);
+
+        // ===== 上下文注入：场景/身份环境字段 + 讨论近期事件 =====
+        // 私信无主动/被动之分，只要注入时机不是关闭即注入（见 ContextInjectionService）
+        try {
+            $ctxInjection = resolve(\Zephyrisle\FlarumZaiBot\Service\Context\ContextInjectionService::class);
+            $context['injected_context'] = $ctxInjection->buildInjectedContext([
+                'channel' => 'message',
+                'wake_type' => null,
+                'discussion_id' => null,
+                'discussion_title' => null,
+                'user_id' => $userId,
+                'username' => $author ? $author->username : null,
+                'display_name' => $author ? $author->display_name : null,
+                'group_names' => $context['group_names'] ?? null,
+            ]);
+        } catch (\Exception $e) {
+            $context['injected_context'] = null;
+        }
+
         $tools = $this->buildBotTools($botUser->id, $userId, $settings);
 
-        $reply = $ai->generateReply($message->content, $context, $tools);
+        $reply = $ai->generateReply($prompt, $context, $tools);
 
         if ($reply && $userId) {
             $reply = $ai->parseSecretEval($reply, $userId);
@@ -156,7 +201,15 @@ class GenerateReplyForMessage extends AbstractJob
                 if ($memoryService->isAvailable()) {
                     $embedding = $memoryService->generateEmbedding($message->content . "\n" . strip_tags($reply));
                     if ($embedding) {
-                        $memoryService->storeMemory($userId, "私信对话：{$message->content}\nAI回复：" . strip_tags($reply), $embedding);
+                        // 原文与归档：保留来源消息原文与来源元信息（对话框/消息），便于核验
+                        $memoryService->storeMemory($userId, "私信对话：{$message->content}\nAI回复：" . strip_tags($reply), $embedding, [
+                            'source_text' => mb_substr(strip_tags((string) $message->content), 0, 500),
+                            'source_meta' => json_encode([
+                                'type' => 'private_message',
+                                'dialog_id' => $dialog->id,
+                                'message_id' => $message->id,
+                            ], JSON_UNESCAPED_UNICODE),
+                        ]);
                     }
                 }
             } catch (\Exception $e) {
@@ -185,5 +238,48 @@ class GenerateReplyForMessage extends AbstractJob
         } catch (\Throwable $e) {
             error_log('[flarum-zai-bot] GenerateReplyForMessage: Created event dispatch failed: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * 构建媒体解析上下文（链接摘要 + 文件信息），未启用或结果为空时返回 null。
+     */
+    protected function buildMediaContext(string $contentHtml, SettingsRepositoryInterface $settings): ?string
+    {
+        $parts = [];
+
+        if ((bool) $settings->get('flarum-zai-bot.media_link_parse_enabled', false)) {
+            try {
+                $links = resolve(LinkParsingService::class)->parse($contentHtml);
+                if (!empty($links)) {
+                    $lines = [];
+                    foreach ($links as $link) {
+                        $title = $link['title'] !== '' ? $link['title'] : $link['url'];
+                        $lines[] = '- ' . $title . ($link['summary'] !== '' ? '：' . $link['summary'] : '');
+                    }
+                    $parts[] = "消息中链接的内容摘要：\n" . implode("\n", $lines);
+                }
+            } catch (\Exception $e) {
+            }
+        }
+
+        if ((bool) $settings->get('flarum-zai-bot.media_file_parse_enabled', false)) {
+            try {
+                $files = resolve(FileParsingService::class)->parse($contentHtml);
+                if (!empty($files)) {
+                    $lines = [];
+                    foreach ($files as $file) {
+                        $line = "- {$file['name']}（{$file['size']}）";
+                        if ($file['preview'] !== '') {
+                            $line .= "：{$file['preview']}";
+                        }
+                        $lines[] = $line;
+                    }
+                    $parts[] = "消息中引用的文件：\n" . implode("\n", $lines);
+                }
+            } catch (\Exception $e) {
+            }
+        }
+
+        return $parts !== [] ? implode("\n\n", $parts) : null;
     }
 }

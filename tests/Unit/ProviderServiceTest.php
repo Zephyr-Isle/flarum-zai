@@ -63,6 +63,25 @@ class ProviderServiceTest extends TestCase
         $this->assertSame('gpt-4o-mini', $endpoints[2]['model']);
     }
 
+    public function testChatEndpointsCarriesVisionFlag(): void
+    {
+        $this->settings->shouldReceive('get')->andReturnUsing(function (string $key, mixed $default = null) {
+            return match ($key) {
+                'flarum-zai-bot.providers' => json_encode([
+                    ['name' => 'Vision', 'api_url' => 'https://api.openai.com/v1', 'api_keys' => 'sk-a', 'model' => 'gpt-4o', 'vision' => true],
+                    ['name' => 'Text', 'api_url' => 'https://api.deepseek.com/v1', 'api_keys' => 'sk-b', 'model' => 'deepseek-chat'],
+                ]),
+                default => $default,
+            };
+        });
+
+        $endpoints = $this->service()->chatEndpoints();
+
+        $this->assertTrue($endpoints[0]['vision']);
+        // 未配置 vision 的供应商默认为不支持识图
+        $this->assertFalse($endpoints[1]['vision']);
+    }
+
     public function testProvidersFiltersDisabledAndInvalidEntries(): void
     {
         $this->settings->shouldReceive('get')->with('flarum-zai-bot.providers', '')->andReturn(json_encode([

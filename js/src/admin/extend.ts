@@ -89,6 +89,185 @@ export default [
             type: 'text',
             default: 'Beijing',
         }))
+        // 智能唤醒
+        .setting(() => ({
+            setting: 'flarum-zai-bot.wake_mention_rules_enabled',
+            label: t('wake_mention_rules_enabled_label'),
+            help: t('wake_mention_rules_enabled_help'),
+            type: 'boolean',
+            default: false,
+        }))
+        .setting(() => ({
+            setting: 'flarum-zai-bot.wake_mention_rules',
+            label: t('wake_mention_rules_label'),
+            help: t('wake_mention_rules_help'),
+            type: 'textarea',
+        }))
+        .setting(() => ({
+            setting: 'flarum-zai-bot.wake_relevance_enabled',
+            label: t('wake_relevance_enabled_label'),
+            help: t('wake_relevance_enabled_help'),
+            type: 'boolean',
+            default: false,
+        }))
+        .setting(() => ({
+            setting: 'flarum-zai-bot.wake_expert_enabled',
+            label: t('wake_expert_enabled_label'),
+            help: t('wake_expert_enabled_help'),
+            type: 'boolean',
+            default: false,
+        }))
+        .setting(() => ({
+            setting: 'flarum-zai-bot.wake_boredom_enabled',
+            label: t('wake_boredom_enabled_label'),
+            help: t('wake_boredom_enabled_help'),
+            type: 'boolean',
+            default: false,
+        }))
+        // 请求编排：消息合并
+        .setting(() => ({
+            setting: 'flarum-zai-bot.wake_merge_seconds',
+            label: t('wake_merge_seconds_label'),
+            help: t('wake_merge_seconds_help'),
+            type: 'number',
+            default: 0,
+            min: 0,
+        }))
+        .setting(() => ({
+            setting: 'flarum-zai-bot.wake_merge_max',
+            label: t('wake_merge_max_label'),
+            help: t('wake_merge_max_help'),
+            type: 'number',
+            default: 5,
+            min: 1,
+            max: 20,
+        }))
+        .setting(() => ({
+            setting: 'flarum-zai-bot.wake_merge_require_wake',
+            label: t('wake_merge_require_wake_label'),
+            help: t('wake_merge_require_wake_help'),
+            type: 'boolean',
+            default: false,
+        }))
+        // 媒体解析
+        .setting(() => ({
+            setting: 'flarum-zai-bot.media_link_parse_enabled',
+            label: t('media_link_parse_enabled_label'),
+            help: t('media_link_parse_enabled_help'),
+            type: 'boolean',
+            default: false,
+        }))
+        .setting(() => ({
+            setting: 'flarum-zai-bot.media_link_blacklist',
+            label: t('media_link_blacklist_label'),
+            help: t('media_link_blacklist_help'),
+            type: 'textarea',
+        }))
+        .setting(() => ({
+            setting: 'flarum-zai-bot.media_link_timeout',
+            label: t('media_link_timeout_label'),
+            help: t('media_link_timeout_help'),
+            type: 'number',
+            default: 8,
+            min: 1,
+        }))
+        .setting(() => ({
+            setting: 'flarum-zai-bot.media_link_max_bytes',
+            label: t('media_link_max_bytes_label'),
+            help: t('media_link_max_bytes_help'),
+            type: 'number',
+            default: 524288,
+            min: 1024,
+        }))
+        .setting(() => ({
+            setting: 'flarum-zai-bot.media_link_max_links',
+            label: t('media_link_max_links_label'),
+            help: t('media_link_max_links_help'),
+            type: 'number',
+            default: 2,
+            min: 1,
+            max: 5,
+        }))
+        .setting(() => ({
+            setting: 'flarum-zai-bot.media_file_parse_enabled',
+            label: t('media_file_parse_enabled_label'),
+            help: t('media_file_parse_enabled_help'),
+            type: 'boolean',
+            default: false,
+        }))
+        .setting(() => ({
+            setting: 'flarum-zai-bot.media_image_classify_enabled',
+            label: t('media_image_classify_enabled_label'),
+            help: t('media_image_classify_enabled_help'),
+            type: 'boolean',
+            default: true,
+        }))
+        // 上下文注入（注入时机 / 事件记录 / 格式与截断）
+        .setting(() => ({
+            setting: 'flarum-zai-bot.ctx_inject_timing',
+            label: t('ctx_inject_timing_label'),
+            help: t('ctx_inject_timing_help'),
+            type: 'select',
+            options: {
+                proactive: t('ctx_timing_proactive'),
+                all: t('ctx_timing_all'),
+                off: t('ctx_timing_off'),
+            },
+            default: 'proactive',
+        }))
+        .setting(() => ({
+            setting: 'flarum-zai-bot.ctx_event_record_enabled',
+            label: t('ctx_event_record_enabled_label'),
+            help: t('ctx_event_record_enabled_help'),
+            type: 'boolean',
+            default: true,
+        }))
+        .setting(() => ({
+            setting: 'flarum-zai-bot.ctx_format',
+            label: t('ctx_format_label'),
+            help: t('ctx_format_help'),
+            type: 'select',
+            options: {
+                concise: t('ctx_format_concise'),
+                detailed: t('ctx_format_detailed'),
+            },
+            default: 'concise',
+        }))
+        .setting(() => ({
+            setting: 'flarum-zai-bot.ctx_entry_max_chars',
+            label: t('ctx_entry_max_chars_label'),
+            help: t('ctx_entry_max_chars_help'),
+            type: 'number',
+            default: 200,
+            min: 20,
+        }))
+        .setting(() => ({
+            setting: 'flarum-zai-bot.ctx_max_events',
+            label: t('ctx_max_events_label'),
+            help: t('ctx_max_events_help'),
+            type: 'number',
+            default: 10,
+            min: 1,
+            max: 50,
+        }))
+        // 记忆系统（记忆原子 + 混合检索）
+        .setting(() => ({
+            setting: 'flarum-zai-bot.memory_hybrid_vector_weight',
+            label: t('memory_hybrid_vector_weight_label'),
+            help: t('memory_hybrid_vector_weight_help'),
+            type: 'number',
+            default: 60,
+            min: 0,
+            max: 100,
+        }))
+        .setting(() => ({
+            setting: 'flarum-zai-bot.memory_decay_days',
+            label: t('memory_decay_days_label'),
+            help: t('memory_decay_days_help'),
+            type: 'number',
+            default: 30,
+            min: 1,
+        }))
         // Embedding 独立配置（不同步 LLM 供应商），默认完全适配 Jina AI
         .setting(() => ({
             setting: 'flarum-zai-bot.embedding_api_url',

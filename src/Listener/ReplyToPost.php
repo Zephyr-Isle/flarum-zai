@@ -42,8 +42,15 @@ class ReplyToPost
             return;
         }
 
-        $this->bus->dispatch(
-            new GenerateReplyForPost($event->post->id)
-        );
+        $job = new GenerateReplyForPost($event->post->id);
+
+        // 请求编排：硬等待消息合并。窗口 > 0 时延迟派发任务，先收集窗口内的后续帖子
+        // 再统一发起请求（见 GenerateReplyForPost 的合并逻辑）。
+        $mergeSeconds = max(0, (int) $this->settings->get('flarum-zai-bot.wake_merge_seconds', 0));
+        if ($mergeSeconds > 0) {
+            $job = $job->delay($mergeSeconds);
+        }
+
+        $this->bus->dispatch($job);
     }
 }

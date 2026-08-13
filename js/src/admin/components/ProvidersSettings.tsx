@@ -10,6 +10,7 @@ interface Provider {
     api_keys: string;
     model: string;
     enabled: boolean;
+    vision: boolean;
 }
 
 interface ProvidersSettingsAttrs {
@@ -75,6 +76,7 @@ export default class ProvidersSettings extends Component<ProvidersSettingsAttrs>
                 api_keys: typeof p.api_keys === 'string' ? p.api_keys : '',
                 model: typeof p.model === 'string' ? p.model : '',
                 enabled: p.enabled !== false,
+                vision: p.vision === true,
             }));
     }
 
@@ -92,6 +94,7 @@ export default class ProvidersSettings extends Component<ProvidersSettingsAttrs>
                 api_keys: keys,
                 model: app.data.settings['flarum-zai-bot.model'] || 'gpt-4o-mini',
                 enabled: true,
+                vision: false,
             },
         ];
     }
@@ -104,6 +107,7 @@ export default class ProvidersSettings extends Component<ProvidersSettingsAttrs>
                 api_keys: p.api_keys,
                 model: p.model,
                 enabled: p.enabled,
+                vision: p.vision,
             }))
         );
     }
@@ -120,6 +124,7 @@ export default class ProvidersSettings extends Component<ProvidersSettingsAttrs>
             api_keys: '',
             model: 'gpt-4o-mini',
             enabled: true,
+            vision: false,
         });
         this.persist();
     }
@@ -259,6 +264,13 @@ export default class ProvidersSettings extends Component<ProvidersSettingsAttrs>
                     { spellcheck: false, autocapitalize: 'off', autocorrect: 'off' }
                 ),
                 this.renderField(index, 'model', this.t('provider_model_label'), p.model, this.t('provider_model_placeholder')),
+                m('div', { className: 'ZaiBot-provider-vision' }, [
+                    m(Switch, {
+                        state: p.vision,
+                        onchange: (val: boolean) => this.update(index, 'vision', val),
+                    }, this.t('provider_vision_label')),
+                    m('div', { className: 'helpText' }, this.t('provider_vision_help')),
+                ]),
             ]),
         ]);
     }

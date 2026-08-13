@@ -37,8 +37,24 @@ class ReplyToPostTest extends TestCase
     {
         $settings = Mockery::mock(SettingsRepositoryInterface::class);
         $settings->shouldReceive('get')->with('flarum-zai-bot.username', 'AIGirl')->andReturn('AIGirl');
+        // 硬等待合并窗口默认关闭（0）
+        $settings->shouldReceive('get')->with('flarum-zai-bot.wake_merge_seconds', 0)->andReturn(0);
 
         return $settings;
+    }
+
+    public function testDispatchesDelayedJobWhenMergeWindowEnabled(): void
+    {
+        $settings = Mockery::mock(SettingsRepositoryInterface::class);
+        $settings->shouldReceive('get')->with('flarum-zai-bot.username', 'AIGirl')->andReturn('AIGirl');
+        $settings->shouldReceive('get')->with('flarum-zai-bot.wake_merge_seconds', 0)->andReturn(5);
+
+        $bus = Mockery::mock(Dispatcher::class);
+        $bus->shouldReceive('dispatch')
+            ->once()
+            ->with(Mockery::on(fn ($job) => $job instanceof GenerateReplyForPost && $job->delay === 5));
+
+        (new ReplyToPost($bus, $settings))->handle(new Posted($this->postWith(43, 99)));
     }
 
     public function testDispatchesJobForHumanPost(): void

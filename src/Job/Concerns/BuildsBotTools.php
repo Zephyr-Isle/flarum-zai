@@ -3,8 +3,11 @@
 namespace Zephyrisle\FlarumZaiBot\Job\Concerns;
 
 use Flarum\Settings\SettingsRepositoryInterface;
+use Zephyrisle\FlarumZaiBot\Service\MemoryService;
 use Zephyrisle\FlarumZaiBot\Service\PortraitService;
 use Zephyrisle\FlarumZaiBot\Service\Tool\LikeTool;
+use Zephyrisle\FlarumZaiBot\Service\Tool\MemorizeMemoryTool;
+use Zephyrisle\FlarumZaiBot\Service\Tool\RecallMemoryTool;
 use Zephyrisle\FlarumZaiBot\Service\Tool\SearchTool;
 use Zephyrisle\FlarumZaiBot\Service\Tool\SendStickerTool;
 use Zephyrisle\FlarumZaiBot\Service\Tool\StickerTool;
@@ -39,6 +42,16 @@ trait BuildsBotTools
 
         if ((bool) $settings->get('flarum-zai-bot.jina_optimization_mode', false)) {
             $tools[] = resolve(WebSearchTool::class);
+        }
+
+        // Agent 原生工具：长期记忆的主动召回与写入（记忆系统可用时注册，避免白耗 token）
+        try {
+            $memory = resolve(MemoryService::class);
+            if ($memory->isAvailable()) {
+                $tools[] = new RecallMemoryTool($memory, $userId);
+                $tools[] = new MemorizeMemoryTool($memory, $userId);
+            }
+        } catch (\Exception $e) {
         }
 
         return $tools;

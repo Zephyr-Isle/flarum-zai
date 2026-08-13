@@ -29,7 +29,7 @@ class SendStickerTool implements ToolInterface
                 ],
                 'query' => [
                     'type' => 'string',
-                    'description' => '搜索关键词，按标题查找贴纸（可选，与sticker_id和sticker_code三选一）',
+                    'description' => '搜索关键词（可选），按标题、分类或代码查找贴纸（与sticker_id和sticker_code三选一）',
                 ],
             ],
         ];
@@ -44,17 +44,33 @@ class SendStickerTool implements ToolInterface
         $sticker = null;
 
         if (!empty($args['sticker_id'])) {
-            $sticker = \Ramon\Stickers\Models\Sticker::find($args['sticker_id']);
+            $sticker = \Ramon\Stickers\Models\Sticker::find((int) $args['sticker_id']);
         } elseif (!empty($args['sticker_code'])) {
-            $sticker = \Ramon\Stickers\Models\Sticker::where('text_to_replace', $args['sticker_code'])->first();
+            $code = trim((string) $args['sticker_code']);
+            // 兼容不带冒号的写法（如 "smile"），补全为 :smile: 再精确查找。
+            if ($code !== '' && !str_starts_with($code, ':')) {
+                $code = ':' . $code . ':';
+            }
+            if ($code !== '') {
+                $sticker = \Ramon\Stickers\Models\Sticker::where('text_to_replace', $code)->first();
+            }
         } elseif (!empty($args['query'])) {
-            $sticker = \Ramon\Stickers\Models\Sticker::where('title', 'like', '%' . $args['query'] . '%')->first();
+            $query = trim((string) $args['query']);
+            if ($query !== '') {
+                $sticker = \Ramon\Stickers\Models\Sticker::where('title', 'like', "%{$query}%")
+                    ->orWhere('category_name', 'like', "%{$query}%")
+                    ->orderBy('id')
+                    ->first();
+            }
         }
 
         if (!$sticker) {
             return '未找到匹配的贴纸。请先用 get_stickers 工具查看可用的贴纸。';
         }
 
-        return "贴纸「{$sticker->title}」已准备就绪。请在回复中直接输出贴纸代码 {$sticker->text_to_replace}，系统会自动将代码替换为贴纸图片。";
+        $title = $sticker->title ?: ($sticker->text_to_replace ?: '贴纸');
+        $path = $sticker->path ? "（{$sticker->path}）" : '';
+
+        return "贴纸「{$title}」{$path}已准备就绪。请在回复中直接输出贴纸代码 {$sticker->text_to_replace}，系统会自动将代码替换为贴纸图片。";
     }
 }

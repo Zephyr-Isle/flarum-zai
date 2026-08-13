@@ -15,6 +15,53 @@ $capsule->addConnection([
 $capsule->setAsGlobal();
 $capsule->bootEloquent();
 
+// Stub for ramon/stickers (optional integration, not installed here) so the
+// sticker tools can be unit-tested. Skipped when the real extension is present.
+if (!class_exists(\Ramon\Stickers\Models\Sticker::class)) {
+    require_once __DIR__ . '/Stubs/stickers.php';
+}
+
+// Mirrors ram0ng1/stickers' stickers table (no timestamps — Flarum
+// AbstractModel turns those off).
+Capsule::schema()->create('stickers', function ($table) {
+    $table->increments('id');
+    $table->string('category')->nullable();
+    $table->string('category_name')->nullable();
+    $table->string('title')->nullable();
+    $table->string('text_to_replace')->nullable();
+    $table->string('path');
+});
+
+// Stub for fof/upload (optional integration, not installed here) so the
+// vision image proxy can be unit-tested. Skipped when the real extension is present.
+if (!class_exists(\FoF\Upload\File::class)) {
+    require_once __DIR__ . '/Stubs/fof_upload_file.php';
+}
+
+// Mirrors FriendsOfFlarum/upload's fof_upload_files table (1.x: uuid column).
+Capsule::schema()->create('fof_upload_files', function ($table) {
+    $table->increments('id');
+    $table->string('uuid')->nullable()->index();
+    $table->string('base_name')->nullable();
+    $table->string('path')->nullable();
+    $table->string('type')->nullable();
+    $table->unsignedBigInteger('size')->default(0);
+    $table->boolean('hidden')->default(false);
+    $table->string('url')->nullable();
+    $table->timestamps();
+});
+
+// Context injection event log: mirrors the bot_context_events table.
+Capsule::schema()->create('bot_context_events', function ($table) {
+    $table->increments('id');
+    $table->unsignedInteger('discussion_id')->nullable();
+    $table->unsignedInteger('post_id')->nullable();
+    $table->unsignedInteger('user_id')->nullable();
+    $table->string('type', 50);
+    $table->text('description');
+    $table->timestamps();
+});
+
 // Schema required by the models under test.
 Capsule::schema()->create('bot_affinities', function ($table) {
     $table->increments('id');

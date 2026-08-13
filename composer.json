@@ -24,7 +24,7 @@
     "suggest": {
         "flarum/messages": "Enables AI replies in private messages.",
         "ramon/verified": "Enables user verification status in AI context and user info tool.",
-        "ramon/stickers": "Enables sticker search and listing tool.",
+        "ramon/stickers": "Enables sticker browsing and sending tools.",
         "flarum/likes": "Enables post like info query tool.",
         "fof/user-bio": "Enables user bio display in profile and context.",
         "fof/upload": "Enables viewing user uploaded files (text and images).",

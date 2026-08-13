@@ -11,7 +11,7 @@ class StickerTool implements ToolInterface
 
     public function getDescription(): string
     {
-        return '搜索和查看可用的表情包/贴纸。可以按分类列出所有贴纸，或搜索贴纸名称/代码。用户可以使用贴纸代码（如 :smile:）在帖子中插入。';
+        return '搜索和查看可用的表情包/贴纸。可以按分类列出所有贴纸，或搜索贴纸名称/代码。返回贴纸的标题、代码（如 :smile:）、文件路径。用户使用代码即可在帖子中插入贴纸。';
     }
 
     public function getParameters(): array
@@ -21,7 +21,7 @@ class StickerTool implements ToolInterface
             'properties' => [
                 'category' => [
                     'type' => 'string',
-                    'description' => '贴纸分类名称（可选），留空则列出所有分类',
+                    'description' => '贴纸分类名称或分类代码（可选），如 "Memes" 或 "memes"，留空则列出所有分类',
                 ],
                 'query' => [
                     'type' => 'string',
@@ -41,31 +41,38 @@ class StickerTool implements ToolInterface
             return '未安装 ramon/stickers 扩展，无法查看贴纸。';
         }
 
-        $category = $args['category'] ?? '';
-        $query = $args['query'] ?? '';
-        $limit = min((int) ($args['limit'] ?? 20), 50);
+        $category = trim((string) ($args['category'] ?? ''));
+        $query = trim((string) ($args['query'] ?? ''));
+        $limit = min(max((int) ($args['limit'] ?? 20), 1), 50);
 
         $stickerQuery = \Ramon\Stickers\Models\Sticker::query();
 
-        if ($category) {
-            $stickerQuery->where('category', $category);
+        if ($category !== '') {
+            // ramon/stickers 的 category 存分类代码（如 "memes"），category_name 存显示名
+            // （如 "Memes"）。两种都匹配，AI 无论传入显示名还是代码都能命中。
+            $stickerQuery->where(function ($q) use ($category) {
+                $q->where('category_name', 'like', "%{$category}%")
+                  ->orWhere('category', 'like', "%{$category}%");
+            });
         }
 
-        if ($query) {
+        if ($query !== '') {
             $stickerQuery->where(function ($q) use ($query) {
                 $q->where('title', 'like', "%{$query}%")
                   ->orWhere('text_to_replace', 'like', "%{$query}%");
             });
         }
 
-        $stickers = $stickerQuery->take($limit)->get();
+        $total = (clone $stickerQuery)->count();
 
-        if ($stickers->isEmpty()) {
-            if ($query) {
+        if ($total === 0) {
+            if ($query !== '') {
                 return "未找到与「{$query}」相关的贴纸。";
             }
             return '暂无可用的贴纸。';
         }
+
+        $stickers = $stickerQuery->orderBy('id')->take($limit)->get();
 
         $grouped = [];
         foreach ($stickers as $sticker) {
@@ -77,13 +84,18 @@ class StickerTool implements ToolInterface
         foreach ($grouped as $catName => $items) {
             $output .= "【{$catName}】\n";
             foreach ($items as $sticker) {
-                $code = $sticker->text_to_replace ?: "（无代码）";
-                $output .= "- {$sticker->title}：{$code}\n";
+                $code = $sticker->text_to_replace ?: '（无代码）';
+                $title = $sticker->title ?: ($sticker->text_to_replace ?: '（无标题）');
+                $output .= "- {$title}：{$code}";
+                if ($sticker->path) {
+                    $output .= "（{$sticker->path}）";
+                }
+                $output .= "\n";
             }
         }
 
-        if ($stickers->count() >= $limit) {
-            $output .= "\n（仅显示前{$limit}个结果）";
+        if ($total > $limit) {
+            $output .= "\n（共{$total}个，仅显示前{$limit}个）";
         }
 
         return trim($output);

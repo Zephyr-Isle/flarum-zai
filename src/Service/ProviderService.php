@@ -158,6 +158,9 @@ class ProviderService
                     'name' => $provider['name'] ?? 'Provider',
                     'api_url' => $url,
                     'api_key' => $key,
+                    // 该供应商的模型是否支持识图（视觉输入）。启用后，用户帖子/私信
+                    // 中的图片会以 image_url 形式发送给该模型（见 AIService）。
+                    'vision' => (bool) ($provider['vision'] ?? false),
                 ];
                 if ($model !== null) {
                     $endpoint['model'] = $model;
