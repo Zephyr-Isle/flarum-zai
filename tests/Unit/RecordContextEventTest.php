@@ -68,6 +68,39 @@ class RecordContextEventTest extends TestCase
         $this->assertStringContainsString('帖子 #42 被隐藏（撤回）', $event->description);
     }
 
+    public function testHandleDispatchesToOnPostHidden(): void
+    {
+        // Flarum 以类名注册监听器并调用 handle()，这里验证分发逻辑
+        (new RecordContextEvent($this->settings()))->handle(new PostHidden($this->post(42, 7), $this->actor()));
+
+        $event = ContextEvent::first();
+
+        $this->assertNotNull($event);
+        $this->assertSame('post_hidden', $event->type);
+        $this->assertStringContainsString('帖子 #42 被隐藏（撤回）', $event->description);
+    }
+
+    public function testHandleDispatchesToOnDiscussionRenamed(): void
+    {
+        $discussion = new \Flarum\Discussion\Discussion();
+        $discussion->setRawAttributes(['id' => 7, 'title' => '新标题'], true);
+
+        (new RecordContextEvent($this->settings()))->handle(new Renamed($discussion, '旧标题', $this->actor()));
+
+        $event = ContextEvent::first();
+
+        $this->assertNotNull($event);
+        $this->assertSame('discussion_renamed', $event->type);
+        $this->assertStringContainsString('由「旧标题」改为「新标题」', $event->description);
+    }
+
+    public function testHandleIgnoresUnknownEvent(): void
+    {
+        (new RecordContextEvent($this->settings()))->handle(new \stdClass());
+
+        $this->assertSame(0, ContextEvent::query()->count());
+    }
+
     public function testRecordsPostRestored(): void
     {
         (new RecordContextEvent($this->settings()))->onPostRestored(new PostRestored($this->post(43, 7), $this->actor()));

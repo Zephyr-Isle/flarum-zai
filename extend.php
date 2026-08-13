@@ -16,15 +16,17 @@ return [
     (new Extend\Event())
         ->listen(Flarum\Post\Event\Posted::class, ReplyToPost::class)
         // 上下文注入：事件记录（帖子撤回/恢复/删除/编辑，讨论创建/改名/隐藏/恢复/删除）
-        ->listen(Flarum\Post\Event\Hidden::class, [\Zephyrisle\FlarumZaiBot\Listener\RecordContextEvent::class, 'onPostHidden'])
-        ->listen(Flarum\Post\Event\Restored::class, [\Zephyrisle\FlarumZaiBot\Listener\RecordContextEvent::class, 'onPostRestored'])
-        ->listen(Flarum\Post\Event\Deleted::class, [\Zephyrisle\FlarumZaiBot\Listener\RecordContextEvent::class, 'onPostDeleted'])
-        ->listen(Flarum\Post\Event\Revised::class, [\Zephyrisle\FlarumZaiBot\Listener\RecordContextEvent::class, 'onPostRevised'])
-        ->listen(Flarum\Discussion\Event\Started::class, [\Zephyrisle\FlarumZaiBot\Listener\RecordContextEvent::class, 'onDiscussionStarted'])
-        ->listen(Flarum\Discussion\Event\Renamed::class, [\Zephyrisle\FlarumZaiBot\Listener\RecordContextEvent::class, 'onDiscussionRenamed'])
-        ->listen(Flarum\Discussion\Event\Hidden::class, [\Zephyrisle\FlarumZaiBot\Listener\RecordContextEvent::class, 'onDiscussionHidden'])
-        ->listen(Flarum\Discussion\Event\Restored::class, [\Zephyrisle\FlarumZaiBot\Listener\RecordContextEvent::class, 'onDiscussionRestored'])
-        ->listen(Flarum\Discussion\Event\Deleted::class, [\Zephyrisle\FlarumZaiBot\Listener\RecordContextEvent::class, 'onDiscussionDeleted']),
+        // 注意：监听器必须用类名字符串注册（Flarum 解析后调用 handle()），
+        // [Class::class, 'method'] 数组对非静态方法不是合法 callable，会导致启动 TypeError。
+        ->listen(Flarum\Post\Event\Hidden::class, \Zephyrisle\FlarumZaiBot\Listener\RecordContextEvent::class)
+        ->listen(Flarum\Post\Event\Restored::class, \Zephyrisle\FlarumZaiBot\Listener\RecordContextEvent::class)
+        ->listen(Flarum\Post\Event\Deleted::class, \Zephyrisle\FlarumZaiBot\Listener\RecordContextEvent::class)
+        ->listen(Flarum\Post\Event\Revised::class, \Zephyrisle\FlarumZaiBot\Listener\RecordContextEvent::class)
+        ->listen(Flarum\Discussion\Event\Started::class, \Zephyrisle\FlarumZaiBot\Listener\RecordContextEvent::class)
+        ->listen(Flarum\Discussion\Event\Renamed::class, \Zephyrisle\FlarumZaiBot\Listener\RecordContextEvent::class)
+        ->listen(Flarum\Discussion\Event\Hidden::class, \Zephyrisle\FlarumZaiBot\Listener\RecordContextEvent::class)
+        ->listen(Flarum\Discussion\Event\Restored::class, \Zephyrisle\FlarumZaiBot\Listener\RecordContextEvent::class)
+        ->listen(Flarum\Discussion\Event\Deleted::class, \Zephyrisle\FlarumZaiBot\Listener\RecordContextEvent::class),
 
     (new Extend\Conditional())
         ->whenExtensionEnabled('flarum-messages', fn () => [

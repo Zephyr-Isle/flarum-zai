@@ -28,12 +28,35 @@ use Zephyrisle\FlarumZaiBot\Model\ContextEvent;
  *   - 讨论隐藏/恢复/删除 → 对应 Discussion 事件
  *
  * 记录由 ctx_event_record_enabled 开关控制（默认开）。
+ *
+ * 注意：本类以类名（字符串）形式注册为事件监听器（Flarum 会从容器解析
+ * 并调用 handle()），不能注册为 [Class::class, 'method'] 数组——
+ * 非静态方法数组不是合法的 PHP callable，会导致 Flarum 启动 TypeError。
  */
 class RecordContextEvent
 {
     public function __construct(
         protected SettingsRepositoryInterface $settings
     ) {
+    }
+
+    /**
+     * 统一入口：按事件类型分发到对应记录方法。
+     */
+    public function handle(object $event): void
+    {
+        match (true) {
+            $event instanceof PostHidden => $this->onPostHidden($event),
+            $event instanceof PostRestored => $this->onPostRestored($event),
+            $event instanceof PostDeleted => $this->onPostDeleted($event),
+            $event instanceof Revised => $this->onPostRevised($event),
+            $event instanceof Started => $this->onDiscussionStarted($event),
+            $event instanceof Renamed => $this->onDiscussionRenamed($event),
+            $event instanceof DiscussionHidden => $this->onDiscussionHidden($event),
+            $event instanceof DiscussionRestored => $this->onDiscussionRestored($event),
+            $event instanceof DiscussionDeleted => $this->onDiscussionDeleted($event),
+            default => null,
+        };
     }
 
     public function onPostHidden(PostHidden $event): void
