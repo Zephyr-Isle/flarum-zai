@@ -7,6 +7,7 @@ use Laminas\Diactoros\Response\JsonResponse;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface;
+use Zephyrisle\FlarumZaiBot\Api\Controller\Concerns\CatchesMissingTables;
 use Zephyrisle\FlarumZaiBot\Service\ExpressionService;
 
 /**
@@ -15,52 +16,56 @@ use Zephyrisle\FlarumZaiBot\Service\ExpressionService;
  */
 class UpdateExpressionController implements RequestHandlerInterface
 {
+    use CatchesMissingTables;
+
     public function __construct(protected ExpressionService $expressions) {}
 
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
-        $actor = RequestUtil::getActor($request);
-        $actor->assertAdmin();
+        return $this->guardDb(function () use ($request) {
+            $actor = RequestUtil::getActor($request);
+            $actor->assertAdmin();
 
-        $id = (int) ($request->getAttribute('id') ?? 0);
-        if ($id <= 0) {
-            return new JsonResponse(['error' => 'invalid_id'], 422);
-        }
+            $id = (int) ($request->getAttribute('id') ?? 0);
+            if ($id <= 0) {
+                return new JsonResponse(['error' => 'invalid_id'], 422);
+            }
 
-        $body = $request->getParsedBody() ?? [];
+            $body = $request->getParsedBody() ?? [];
 
-        $action = $body['action'] ?? null;
-        if ($action === 'approve') {
-            return $this->expressions->approve($id)
-                ? new JsonResponse(['ok' => true, 'status' => 'active'])
-                : new JsonResponse(['error' => 'not_found'], 404);
-        }
+            $action = $body['action'] ?? null;
+            if ($action === 'approve') {
+                return $this->expressions->approve($id)
+                    ? new JsonResponse(['ok' => true, 'status' => 'active'])
+                    : new JsonResponse(['error' => 'not_found'], 404);
+            }
 
-        if ($action === 'disable') {
-            return $this->expressions->disable($id)
-                ? new JsonResponse(['ok' => true, 'status' => 'disabled'])
-                : new JsonResponse(['error' => 'not_found'], 404);
-        }
+            if ($action === 'disable') {
+                return $this->expressions->disable($id)
+                    ? new JsonResponse(['ok' => true, 'status' => 'disabled'])
+                    : new JsonResponse(['error' => 'not_found'], 404);
+            }
 
-        if ($action === 'delete') {
-            return $this->expressions->delete($id)
+            if ($action === 'delete') {
+                return $this->expressions->delete($id)
+                    ? new JsonResponse(['ok' => true])
+                    : new JsonResponse(['error' => 'not_found'], 404);
+            }
+
+            $fields = [];
+            foreach (['name', 'situation', 'template', 'syntax', 'recall_tags', 'scope'] as $key) {
+                if (array_key_exists($key, $body)) {
+                    $fields[$key] = $body[$key];
+                }
+            }
+
+            if ($fields === []) {
+                return new JsonResponse(['error' => 'nothing_to_update'], 422);
+            }
+
+            return $this->expressions->updateFields($id, $fields)
                 ? new JsonResponse(['ok' => true])
                 : new JsonResponse(['error' => 'not_found'], 404);
-        }
-
-        $fields = [];
-        foreach (['name', 'situation', 'template', 'syntax', 'recall_tags', 'scope'] as $key) {
-            if (array_key_exists($key, $body)) {
-                $fields[$key] = $body[$key];
-            }
-        }
-
-        if ($fields === []) {
-            return new JsonResponse(['error' => 'nothing_to_update'], 422);
-        }
-
-        return $this->expressions->updateFields($id, $fields)
-            ? new JsonResponse(['ok' => true])
-            : new JsonResponse(['error' => 'not_found'], 404);
+        });
     }
 }

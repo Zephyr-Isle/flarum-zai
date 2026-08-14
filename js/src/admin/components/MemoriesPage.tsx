@@ -260,7 +260,7 @@ export default class MemoriesPage extends Component {
             })
             .catch((e: any) => {
                 this.loading = false;
-                this.error = e.statusText || e.message || 'Unknown error';
+                this.error = e.response?.error || e.statusText || e.message || 'Unknown error';
                 m.redraw();
             });
     }
@@ -291,7 +291,7 @@ export default class MemoriesPage extends Component {
             })
             .catch((e: any) => {
                 this.saving = false;
-                this.error = e.statusText || e.message || 'Unknown error';
+                this.error = e.response?.error || e.statusText || e.message || 'Unknown error';
                 m.redraw();
             });
     }
@@ -311,7 +311,7 @@ export default class MemoriesPage extends Component {
             })
             .catch((e: any) => {
                 this.saving = false;
-                this.error = e.statusText || e.message || 'Unknown error';
+                this.error = e.response?.error || e.statusText || e.message || 'Unknown error';
                 m.redraw();
             });
     }
