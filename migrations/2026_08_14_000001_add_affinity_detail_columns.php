@@ -13,14 +13,11 @@ use Illuminate\Database\Schema\Blueprint;
  *   - blacklisted       黑名单熔断标记（好感度过低时自动加入，管理员可手动移除）
  * total_score 保留为“好感度主值（favor）”，与旧代码兼容。
  */
-return Migration::addColumns(
-    'bot_affinities',
-    function (Blueprint $table) {
-        $table->integer('trust')->default(0)->after('total_score');
-        $table->integer('intimacy')->default(0)->after('trust');
-        $table->json('emotions')->nullable()->after('intimacy');
-        $table->text('attitude')->nullable()->after('emotions');
-        $table->text('relationship')->nullable()->after('attitude');
-        $table->boolean('blacklisted')->default(false)->after('relationship');
-    }
-);
+return Migration::addColumns('bot_affinities', [
+    'trust' => ['integer', 'default' => 0, 'after' => 'total_score'],
+    'intimacy' => ['integer', 'default' => 0, 'after' => 'trust'],
+    'emotions' => ['json', 'nullable' => true, 'after' => 'intimacy'],
+    'attitude' => ['text', 'nullable' => true, 'after' => 'emotions'],
+    'relationship' => ['text', 'nullable' => true, 'after' => 'attitude'],
+    'blacklisted' => ['boolean', 'default' => false, 'after' => 'relationship'],
+]);
