@@ -221,6 +221,12 @@ class GenerateReplyForPost extends AbstractJob
         if ($author) {
             $affinity = BotAffinity::getOrCreate($author->id);
 
+            // 黑名单熔断：好感度过低被自动（或管理员手动）拉黑时，不再触发任何 LLM 思考
+            if ($affinity->blacklisted) {
+                error_log('[flarum-zai-bot] GenerateReplyForPost: user blacklisted, skip. user_id=' . $author->id);
+                return;
+            }
+
             try {
                 $portraitService = resolve(PortraitService::class);
                 $portraitSummary = $portraitService->getPortraitSummary($author->id);
@@ -249,6 +255,11 @@ class GenerateReplyForPost extends AbstractJob
             'display_name' => $author ? $author->display_name : '未知',
             'is_verified' => $this->isVerified($author),
             'affinity_score' => $affinity?->total_score ?? null,
+            'affinity_trust' => $affinity?->trust ?? null,
+            'affinity_intimacy' => $affinity?->intimacy ?? null,
+            'affinity_emotions' => $affinity?->emotions ?? null,
+            'affinity_attitude' => $affinity?->attitude ?? null,
+            'affinity_relationship' => $affinity?->relationship ?? null,
             'portrait_summary' => $portraitSummary,
             'memories' => $memories,
             'conversation_history' => $history,
@@ -304,7 +315,25 @@ class GenerateReplyForPost extends AbstractJob
             $context['injected_context'] = null;
         }
 
-        $tools = $this->buildBotTools($botUser->id, $userId, $settings);
+        $tools = $this->buildBotTools($botUser->id, $userId, $settings, 'discussion');
+
+        // ===== 关系网与表达风格库注入 =====
+        // 关系网：长期稳定认知（身份/别名/边界）；表达库：仅已启用且作用域匹配的"怎么说"规则
+        try {
+            if ((bool) $settings->get('flarum-zai-bot.relation_network_enabled', true) && $userId) {
+                $context['relation_summary'] = resolve(\Zephyrisle\FlarumZaiBot\Service\RelationService::class)->buildSummary($userId);
+            }
+
+            if ((bool) $settings->get('flarum-zai-bot.expression_learning_enabled', true)) {
+                $expressionService = resolve(\Zephyrisle\FlarumZaiBot\Service\ExpressionService::class);
+                $activeRules = $expressionService->activeRules('discussion', $userId, $discussion->id);
+                if ($activeRules !== []) {
+                    $context['expression_rules'] = $expressionService->buildInjectionText($activeRules);
+                }
+            }
+        } catch (\Exception $e) {
+            error_log('[flarum-zai-bot] GenerateReplyForPost: relation/expression context failed: ' . $e->getMessage());
+        }
 
         $reply = $ai->generateReply($prompt, $context, $tools);
 

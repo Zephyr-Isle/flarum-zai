@@ -3,8 +3,11 @@
 namespace Zephyrisle\FlarumZaiBot\Job\Concerns;
 
 use Flarum\Settings\SettingsRepositoryInterface;
+use Zephyrisle\FlarumZaiBot\Service\ExpressionService;
 use Zephyrisle\FlarumZaiBot\Service\MemoryService;
 use Zephyrisle\FlarumZaiBot\Service\PortraitService;
+use Zephyrisle\FlarumZaiBot\Service\RelationService;
+use Zephyrisle\FlarumZaiBot\Service\Tool\LearnExpressionTool;
 use Zephyrisle\FlarumZaiBot\Service\Tool\LikeTool;
 use Zephyrisle\FlarumZaiBot\Service\Tool\MemorizeMemoryTool;
 use Zephyrisle\FlarumZaiBot\Service\Tool\RecallMemoryTool;
@@ -12,6 +15,7 @@ use Zephyrisle\FlarumZaiBot\Service\Tool\SearchTool;
 use Zephyrisle\FlarumZaiBot\Service\Tool\SendStickerTool;
 use Zephyrisle\FlarumZaiBot\Service\Tool\StickerTool;
 use Zephyrisle\FlarumZaiBot\Service\Tool\UpdatePortraitTool;
+use Zephyrisle\FlarumZaiBot\Service\Tool\UpdateRelationTool;
 use Zephyrisle\FlarumZaiBot\Service\Tool\UserInfoTool;
 use Zephyrisle\FlarumZaiBot\Service\Tool\ViewFileTool;
 use Zephyrisle\FlarumZaiBot\Service\Tool\WebSearchTool;
@@ -22,7 +26,7 @@ use Zephyrisle\FlarumZaiBot\Service\Tool\WebSearchTool;
  */
 trait BuildsBotTools
 {
-    protected function buildBotTools(int $botUserId, ?int $userId, SettingsRepositoryInterface $settings): array
+    protected function buildBotTools(int $botUserId, ?int $userId, SettingsRepositoryInterface $settings, string $channel = 'discussion'): array
     {
         $tools = [
             new UserInfoTool(),
@@ -30,6 +34,16 @@ trait BuildsBotTools
             new ViewFileTool(),
             new UpdatePortraitTool(resolve(PortraitService::class), $userId),
         ];
+
+        // 关系网（可在设置中关闭）
+        if ((bool) $settings->get('flarum-zai-bot.relation_network_enabled', true)) {
+            $tools[] = new UpdateRelationTool(resolve(RelationService::class), $userId);
+        }
+
+        // 表达学习（可在设置中关闭）
+        if ((bool) $settings->get('flarum-zai-bot.expression_learning_enabled', true)) {
+            $tools[] = new LearnExpressionTool(resolve(ExpressionService::class), $channel);
+        }
 
         if (class_exists(\Ramon\Stickers\Models\Sticker::class)) {
             $tools[] = new StickerTool();

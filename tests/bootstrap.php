@@ -67,8 +67,42 @@ Capsule::schema()->create('bot_affinities', function ($table) {
     $table->increments('id');
     $table->integer('user_id')->unsigned()->unique();
     $table->integer('total_score')->default(0);
+    $table->integer('trust')->default(0);
+    $table->integer('intimacy')->default(0);
+    $table->json('emotions')->nullable();
+    $table->text('attitude')->nullable();
+    $table->text('relationship')->nullable();
+    $table->boolean('blacklisted')->default(false);
     $table->integer('interaction_count')->default(0);
     $table->dateTime('last_interaction_at')->nullable();
+    $table->timestamps();
+});
+
+// Relationship network (stable identity/aliases/boundaries/pending observations).
+Capsule::schema()->create('bot_relations', function ($table) {
+    $table->increments('id');
+    $table->integer('user_id')->unsigned()->unique();
+    $table->text('identity')->nullable();
+    $table->json('aliases')->nullable();
+    $table->text('group_profile')->nullable();
+    $table->json('boundaries')->nullable();
+    $table->json('pending_observations')->nullable();
+    $table->timestamps();
+});
+
+// Expression learning rules (pending/active/disabled).
+Capsule::schema()->create('bot_expressions', function ($table) {
+    $table->increments('id');
+    $table->string('name', 100);
+    $table->string('status', 20)->default('pending');
+    $table->string('source_type', 20)->default('manual');
+    $table->text('situation')->nullable();
+    $table->text('template');
+    $table->text('syntax')->nullable();
+    $table->json('recall_tags')->nullable();
+    $table->json('scope')->nullable();
+    $table->json('evidence')->nullable();
+    $table->integer('use_count')->default(0);
     $table->timestamps();
 });
 

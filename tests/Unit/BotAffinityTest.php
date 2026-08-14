@@ -95,4 +95,85 @@ class BotAffinityTest extends TestCase
         $this->assertSame(2, (int) $fresh->interaction_count);
         $this->assertNotNull($fresh->last_interaction_at);
     }
+
+    public function testTrustAndIntimacyAdjustmentsClampToBounds(): void
+    {
+        $affinity = BotAffinity::getOrCreate(10);
+
+        $affinity->adjustTrust(40);
+        $this->assertSame(40, (int) $affinity->trust);
+
+        $affinity->adjustTrust(200);
+        $this->assertSame(100, (int) $affinity->trust);
+
+        $affinity->adjustIntimacy(-150);
+        $this->assertSame(-100, (int) $affinity->intimacy);
+
+        $affinity->setTrust(25);
+        $this->assertSame(25, (int) $affinity->trust);
+
+        $affinity->setIntimacy(0);
+        $this->assertSame(0, (int) $affinity->intimacy);
+    }
+
+    public function testEmotionDeltasClampAndIgnoreUnknownKeys(): void
+    {
+        $affinity = BotAffinity::getOrCreate(11);
+
+        $affinity->applyEmotionDeltas(['joy' => 5, 'anger' => -10, 'nonexistent' => 99]);
+        $this->assertSame(5, $affinity->getEmotion('joy'));
+        $this->assertSame(-10, $affinity->getEmotion('anger'));
+        $this->assertSame(0, $affinity->getEmotion('nonexistent'));
+
+        // 主动代谢：负值抵消旧情绪（-10 + 20 - 15 = -5）
+        $affinity->applyEmotionDeltas(['anger' => 20]);
+        $affinity->applyEmotionDeltas(['anger' => -15]);
+        $this->assertSame(-5, $affinity->getEmotion('anger'));
+
+        // 钳制
+        $affinity->applyEmotionDeltas(['joy' => 999]);
+        $this->assertSame(100, $affinity->getEmotion('joy'));
+
+        $affinity->setEmotion('shame', 30);
+        $this->assertSame(30, $affinity->getEmotion('shame'));
+    }
+
+    public function testAttitudeRelationshipAndBlacklist(): void
+    {
+        $affinity = BotAffinity::getOrCreate(12);
+
+        $affinity->setAttitude('友善热情');
+        $this->assertSame('友善热情', $affinity->attitude);
+
+        $affinity->setRelationship('普通朋友');
+        $this->assertSame('普通朋友', $affinity->relationship);
+
+        $affinity->blacklist();
+        $this->assertTrue((bool) $affinity->blacklisted);
+
+        $affinity->unblacklist();
+        $this->assertFalse((bool) $affinity->blacklisted);
+    }
+
+    public function testResetClearsAllState(): void
+    {
+        $affinity = BotAffinity::getOrCreate(13);
+        $affinity->adjustScore(50);
+        $affinity->setTrust(60);
+        $affinity->setIntimacy(70);
+        $affinity->applyEmotionDeltas(['joy' => 80]);
+        $affinity->setAttitude('亲密');
+        $affinity->setRelationship('挚友');
+        $affinity->blacklist();
+
+        $affinity->reset();
+
+        $this->assertSame(0, (int) $affinity->total_score);
+        $this->assertSame(0, (int) $affinity->trust);
+        $this->assertSame(0, (int) $affinity->intimacy);
+        $this->assertSame(0, $affinity->getEmotion('joy'));
+        $this->assertNull($affinity->attitude);
+        $this->assertNull($affinity->relationship);
+        $this->assertFalse((bool) $affinity->blacklisted);
+    }
 }

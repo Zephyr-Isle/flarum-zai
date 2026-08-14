@@ -94,6 +94,12 @@ zephyrisle-flarum-zai-bot:
       memory_hybrid_vector_weight_help: 'Fusion weight for the two retrieval paths (BM25 keyword + vector semantics): the vector share (0-100), keyword is the rest. Default 60 (60% vector / 40% keyword).'
       memory_decay_days_label: 'Memory decay period (days)'
       memory_decay_days_help: 'The longer since a memory was last recalled, the lower its recall rank. Decays one step per this many days (default 30).'
+      affinity_blacklist_threshold_label: 'Blacklist threshold (favor)'
+      affinity_blacklist_threshold_help: 'Users whose favor drops to this value or below are automatically blacklisted; blacklisted users never trigger any AI reply (circuit breaker). Set 0 to disable auto-meltdown. Admins can blacklist/unblacklist or reset manually on the affinities page.'
+      relation_network_enabled_label: 'Enable relation network (identity/aliases/boundaries/pending observations)'
+      relation_network_enabled_help: 'The AI can maintain long-term stable relationship info per user via the update_relation_network tool and gets the relation summary injected into every reply. Disable to skip injection and the tool.'
+      expression_learning_enabled_label: 'Enable expression learning (pending/active/disabled)'
+      expression_learning_enabled_help: 'The AI can generalize "how to say things" (short expressions, syntax, situational style) from conversations via the learn_expression tool. New rules always enter pending review and only enter replies after admin approval. Disable to skip injection and the tool.'
       pgvector_host_label: 'PostgreSQL Host (for pgvector memory, leave empty to disable)'
       pgvector_host_help: 'Requires the pgvector extension. Embedding dimension must match the model (jina-embeddings-v3 = 1024).'
       pgvector_port_label: PostgreSQL Port
@@ -115,7 +121,7 @@ zephyrisle-flarum-zai-bot:
 
     affinities:
       title: Bot Affinities
-      description: User affinity scores for the AI bot. Scores increase with each interaction.
+      description: 'Detailed affinity system: favor (-100~100), trust, intimacy and a 12-dimension emotion state. Click "Edit" to adjust manually, reset, or manage blacklists (blacklisted users never trigger AI replies).'
       loading: Loading...
       refresh: Refresh
       no_affinities: No affinities recorded yet.
@@ -123,8 +129,144 @@ zephyrisle-flarum-zai-bot:
       page_prev: Previous page
       page_next: Next page
       error: 'Failed to load affinities: {error}'
+      filter_placeholder: 'Search username/display name...'
+      filter_apply: Search
+      edit: Edit
+      save: Save
+      cancel: Cancel
+      reset: Reset all
+      confirm_reset: 'Reset all affinity state for this user (favor/trust/intimacy/emotions/attitude/relationship/blacklist)? This cannot be undone.'
+      blacklisted: Blacklisted
+      normal: Normal
+      edit_favor: 'Favor (-100~100)'
+      edit_trust: 'Trust (-100~100)'
+      edit_intimacy: 'Intimacy (-100~100)'
+      edit_attitude: 'Attitude'
+      edit_relationship: 'Relationship'
+      edit_blacklist: 'Blacklist (never reply)'
+      level_intimate: Intimate
+      level_friendly: Friendly
+      level_neutral: Neutral
+      level_cold: Hostile-lite
+      level_hostile: Hostile
       table:
         user: User
-        total_score: Score
+        favor: Favor
+        trust: Trust
+        intimacy: Intimacy
+        level: Level
         interactions: Interactions
         last_interaction: Last Interaction
+        status: Status
+        actions: Actions
+
+    memories:
+      title: Memory Management
+      description: 'Manage long-term memories (pgvector). Search by keyword, filter by user, adjust importance and TTL, archive/restore/delete. Memory content and embeddings are read-only to keep vectors consistent.'
+      loading: Loading...
+      refresh: Refresh
+      no_memories: No memories recorded yet.
+      total_records: '{total} records'
+      page_prev: Previous page
+      page_next: Next page
+      error: 'Failed to load memories: {error}'
+      memory_disabled: 'Memory system disabled: no pgvector database configured (settings → pgvector). Memories will appear here once enabled.'
+      filter_q_placeholder: 'Search memory content...'
+      filter_user_placeholder: 'Filter by user (ID or username)...'
+      filter_archived: Include archived
+      filter_apply: Search
+      status_active: Active
+      status_archived: Archived
+      ttl_placeholder: 'TTL days (0=forever)'
+      action_edit: Edit
+      action_save: Save
+      action_cancel: Cancel
+      action_archive: Archive
+      action_restore: Restore
+      action_delete: Delete
+      confirm_delete: 'Permanently delete this memory? This cannot be undone.'
+      table:
+        user: User
+        content: Memory
+        importance: Importance
+        ttl: TTL/Expires
+        reinforce: Recalls
+        created: Created
+        status: Status
+        actions: Actions
+        source: 'Source: {source}'
+        last_interaction: Last Interaction
+
+    relations:
+      title: Relation Network
+      description: 'Long-term stable relationship info per user: identity, aliases, community profile notes, boundary notes and pending observations (land into the formal fields once confirmed). Relationship facts are "what/why", separate from expression learning (which only stores "how to say things").'
+      loading: Loading...
+      refresh: Refresh
+      no_relations: No relation records yet.
+      total_records: '{total} records'
+      page_prev: Previous
+      page_next: Next
+      error: 'Failed to load relations: {error}'
+      filter_q_placeholder: 'Search username/display name...'
+      filter_apply: Search
+      action_edit: Edit
+      action_save: Save
+      action_cancel: Cancel
+      action_confirm: Confirm
+      action_reject: Reject
+      identity_placeholder: 'Stable identity (long-term)'
+      aliases_placeholder: 'Aliases (separate with 、 or comma)'
+      group_profile_placeholder: Community profile notes
+      boundaries_placeholder: 'Boundary notes (one per line)'
+      boundaries_hint: Explicit interaction boundaries stated by the user
+      no_pending: No pending observations
+      table:
+        user: User
+        identity: Identity
+        aliases: Aliases
+        group_profile: Community Profile
+        boundaries: Boundaries
+        pending: Pending Observations
+        actions: Actions
+
+    expressions:
+      title: Expression Learning
+      description: 'Generalize "how to say things": short expressions, syntax habits and situational style. Pending rules never enter replies; they only apply after approval. Nicknames, accounts, relationship facts, secrets and long sentences must never be copied as expression rules.'
+      loading: Loading...
+      refresh: Refresh
+      no_expressions: No expression rules yet.
+      total_records: '{total} records'
+      page_prev: Previous
+      page_next: Next
+      error: 'Failed to load expressions: {error}'
+      filter_q_placeholder: 'Search name/template/situation...'
+      filter_apply: Search
+      tab_pending: Pending
+      tab_active: Active
+      tab_disabled: Disabled
+      action_edit: Edit
+      action_save: Save
+      action_cancel: Cancel
+      action_approve: Approve
+      action_disable: Disable
+      action_delete: Delete
+      confirm_delete: 'Delete this expression rule? This cannot be undone.'
+      situation_placeholder: Applicable situation
+      tags_placeholder: 'Recall tags (separate with 、 or comma)'
+      scope_placeholder: 'Scope, e.g. channels:discussion,private_message; users:1,2; discussions:3'
+      no_evidence: No evidence recorded
+      usage_times: uses
+      source_discussion: Discussion
+      source_private_message: Private message
+      source_manual: Manual
+      table:
+        name: Name
+        situation: Situation
+        template: Template
+        tags: Tags
+        source: Source
+        usage: Uses
+        actions: Actions
+        syntax: Syntax
+        scope: Scope
+        evidence: 'Evidence (read-only)'

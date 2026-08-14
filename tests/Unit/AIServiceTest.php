@@ -732,4 +732,60 @@ class AIServiceTest extends TestCase
         $this->assertSame($reply, $result);
         $this->assertNull(BotAffinity::where('user_id', 102)->first());
     }
+
+    public function testParseSecretEvalExtendedFormatWithTrustIntimacyAndEmotions(): void
+    {
+        $reply = "哼，原谅你啦！\n[Favour: 62, Trust: 40, Intimacy: 35, Attitude: 嘴上凶但心软, Relationship: 熟人以上]\n[Emotions: joy+5, anger-10, shame+2]";
+
+        $result = $this->ai->parseSecretEval($reply, 103);
+
+        $this->assertSame('哼，原谅你啦！', $result);
+
+        $affinity = BotAffinity::where('user_id', 103)->first();
+        $this->assertNotNull($affinity);
+        $this->assertSame(62, (int) $affinity->total_score);
+        $this->assertSame(40, (int) $affinity->trust);
+        $this->assertSame(35, (int) $affinity->intimacy);
+        $this->assertSame('嘴上凶但心软', $affinity->attitude);
+        $this->assertSame('熟人以上', $affinity->relationship);
+        $this->assertSame(5, (int) $affinity->getEmotion('joy'));
+        $this->assertSame(-10, (int) $affinity->getEmotion('anger'));
+        $this->assertSame(2, (int) $affinity->getEmotion('shame'));
+    }
+
+    public function testParseSecretEvalBlacklistMeltdown(): void
+    {
+        $this->stubSettings([
+            'flarum-zai-bot.affinity_blacklist_threshold' => -80,
+        ]);
+
+        $this->ai->parseSecretEval('[Favour: -90, Attitude: 恶意用户, Relationship: 敌对]', 104);
+
+        $affinity = BotAffinity::where('user_id', 104)->first();
+        $this->assertNotNull($affinity);
+        $this->assertSame(-90, (int) $affinity->total_score);
+        $this->assertTrue((bool) $affinity->blacklisted);
+    }
+
+    public function testParseSecretEvalDoesNotBlacklistAboveThreshold(): void
+    {
+        $this->stubSettings([
+            'flarum-zai-bot.affinity_blacklist_threshold' => -80,
+        ]);
+
+        $this->ai->parseSecretEval('[Favour: -50]', 105);
+
+        $affinity = BotAffinity::where('user_id', 105)->first();
+        $this->assertNotNull($affinity);
+        $this->assertFalse((bool) $affinity->blacklisted);
+    }
+
+    public function testParseSecretEvalBlacklistDisabledByDefault(): void
+    {
+        $this->ai->parseSecretEval('[Favour: -100]', 106);
+
+        $affinity = BotAffinity::where('user_id', 106)->first();
+        $this->assertNotNull($affinity);
+        $this->assertFalse((bool) $affinity->blacklisted);
+    }
 }

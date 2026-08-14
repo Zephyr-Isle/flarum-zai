@@ -1,6 +1,9 @@
 import app from 'flarum/admin/app';
 import Extend from 'flarum/common/extenders';
 import AffinitiesPage from './components/AffinitiesPage';
+import MemoriesPage from './components/MemoriesPage';
+import RelationsPage from './components/RelationsPage';
+import ExpressionsPage from './components/ExpressionsPage';
 
 const t = (key: string, params?: any) => app.translator.trans('zephyrisle-flarum-zai-bot.admin.settings.' + key, params);
 
@@ -268,6 +271,31 @@ export default [
             default: 30,
             min: 1,
         }))
+        // 细致好感度系统：黑名单熔断阈值
+        .setting(() => ({
+            setting: 'flarum-zai-bot.affinity_blacklist_threshold',
+            label: t('affinity_blacklist_threshold_label'),
+            help: t('affinity_blacklist_threshold_help'),
+            type: 'number',
+            default: 0,
+            min: -100,
+            max: 0,
+        }))
+        // 关系网与表达学习开关
+        .setting(() => ({
+            setting: 'flarum-zai-bot.relation_network_enabled',
+            label: t('relation_network_enabled_label'),
+            help: t('relation_network_enabled_help'),
+            type: 'boolean',
+            default: true,
+        }))
+        .setting(() => ({
+            setting: 'flarum-zai-bot.expression_learning_enabled',
+            label: t('expression_learning_enabled_label'),
+            help: t('expression_learning_enabled_help'),
+            type: 'boolean',
+            default: true,
+        }))
         // Embedding 独立配置（不同步 LLM 供应商），默认完全适配 Jina AI
         .setting(() => ({
             setting: 'flarum-zai-bot.embedding_api_url',
@@ -319,5 +347,8 @@ export default [
             label: t('pgvector_password_label'),
             type: 'password',
         }))
-        .page(AffinitiesPage),
+        .page(AffinitiesPage)
+        .page(MemoriesPage)
+        .page(RelationsPage)
+        .page(ExpressionsPage),
 ];

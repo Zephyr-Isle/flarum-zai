@@ -4,3 +4,6 @@ composer.lock
 .phpunit.cache/
 .DS_Store
 *.log
+
+.freebuff/
+

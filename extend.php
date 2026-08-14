@@ -69,7 +69,12 @@ return [
         ->default('flarum-zai-bot.ctx_max_events', 10)
         // 记忆系统（记忆原子 + 混合检索）
         ->default('flarum-zai-bot.memory_hybrid_vector_weight', 60)
-        ->default('flarum-zai-bot.memory_decay_days', 30),
+        ->default('flarum-zai-bot.memory_decay_days', 30)
+        // 细致好感度系统：黑名单熔断阈值（好感度 ≤ 该值自动拉黑，0 表示禁用）
+        ->default('flarum-zai-bot.affinity_blacklist_threshold', 0)
+        // 关系网与表达学习开关
+        ->default('flarum-zai-bot.relation_network_enabled', true)
+        ->default('flarum-zai-bot.expression_learning_enabled', true),
 
     (new Extend\Model(\Zephyrisle\FlarumZaiBot\Model\ContextEvent::class)),
 
@@ -77,10 +82,21 @@ return [
 
     (new Extend\Model(\Zephyrisle\FlarumZaiBot\Model\UserPortrait::class)),
 
+    (new Extend\Model(\Zephyrisle\FlarumZaiBot\Model\BotRelation::class)),
+
+    (new Extend\Model(\Zephyrisle\FlarumZaiBot\Model\BotExpression::class)),
+
     (new Extend\Locales(__DIR__ . '/locale')),
 
     (new Extend\Routes('api'))
         ->get('/zai-bot/affinities', 'zai-bot.affinities', \Zephyrisle\FlarumZaiBot\Api\Controller\ListAffinitiesController::class)
+        ->patch('/zai-bot/affinities/{userId}', 'zai-bot.affinities.update', \Zephyrisle\FlarumZaiBot\Api\Controller\UpdateAffinityController::class)
+        ->get('/zai-bot/memories', 'zai-bot.memories', \Zephyrisle\FlarumZaiBot\Api\Controller\ListMemoriesController::class)
+        ->patch('/zai-bot/memories/{id}', 'zai-bot.memories.update', \Zephyrisle\FlarumZaiBot\Api\Controller\UpdateMemoryController::class)
+        ->get('/zai-bot/relations', 'zai-bot.relations', \Zephyrisle\FlarumZaiBot\Api\Controller\ListRelationsController::class)
+        ->patch('/zai-bot/relations/{userId}', 'zai-bot.relations.update', \Zephyrisle\FlarumZaiBot\Api\Controller\UpdateRelationController::class)
+        ->get('/zai-bot/expressions', 'zai-bot.expressions', \Zephyrisle\FlarumZaiBot\Api\Controller\ListExpressionsController::class)
+        ->patch('/zai-bot/expressions/{id}', 'zai-bot.expressions.update', \Zephyrisle\FlarumZaiBot\Api\Controller\UpdateExpressionController::class)
         ->post('/zai-bot/test-api', 'zai-bot.test-api', \Zephyrisle\FlarumZaiBot\Api\Controller\TestApiController::class)
         ->get('/zai-bot/jina-proxy', 'zai-bot.jina-proxy', \Zephyrisle\FlarumZaiBot\Api\Controller\JinaProxyController::class)
         // 免鉴权图片代理：供 AI 模型视觉 API 拉取 fof/upload 的私有图片（见 ImageExtractor / VisionImageController）

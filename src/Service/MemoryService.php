@@ -171,6 +171,141 @@ class MemoryService
     }
 
     /**
+     * 管理用分页列表（后台记忆管理页）。
+     *
+     * 按内容关键词过滤（可空），支持按用户过滤、包含已归档记忆。
+     * 排序：重要度降序（同分按创建时间降序）。
+     *
+     * @param int        $page   页码（从 1 开始）
+     * @param int        $limit  每页条数
+     * @param int|null   $userId 按用户过滤
+     * @param string     $query  内容关键词（LIKE 匹配）
+     * @param bool       $includeArchived 是否包含已归档记忆
+     * @return array{items: array, total: int}
+     */
+    public function listMemories(int $page = 1, int $limit = 20, ?int $userId = null, string $query = '', bool $includeArchived = false): array
+    {
+        $pdo = $this->getPdo();
+        if (!$pdo) {
+            return ['items' => [], 'total' => 0];
+        }
+
+        $page = max(1, $page);
+        $limit = max(1, min(100, $limit));
+
+        $where = [];
+        $params = [];
+
+        if ($userId !== null) {
+            $where[] = 'user_id = ?';
+            $params[] = $userId;
+        }
+
+        $query = trim($query);
+        if ($query !== '') {
+            $where[] = 'content ILIKE ?';
+            $params[] = '%' . $query . '%';
+        }
+
+        if (!$includeArchived) {
+            $where[] = 'archived_at IS NULL';
+        }
+
+        $whereSql = $where !== [] ? 'WHERE ' . implode(' AND ', $where) : '';
+
+        try {
+            $stmt = $pdo->prepare("SELECT COUNT(*) AS total FROM bot_memories {$whereSql}");
+            $stmt->execute($params);
+            $total = (int) ($stmt->fetch(\PDO::FETCH_ASSOC)['total'] ?? 0);
+
+            $lastPage = max(1, (int) ceil($total / $limit));
+            $page = min($page, $lastPage);
+
+            $offset = ($page - 1) * $limit;
+            $stmt = $pdo->prepare("
+                SELECT id, user_id, content, created_at, importance, reinforce_count,
+                       last_accessed_at, ttl_days, expires_at, archived_at, source_text, source_meta
+                FROM bot_memories
+                {$whereSql}
+                ORDER BY importance DESC, id DESC
+                LIMIT {$limit} OFFSET {$offset}
+            ");
+            $stmt->execute($params);
+            $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+
+            $items = array_map(function (array $row) {
+                $row['id'] = (int) $row['id'];
+                $row['user_id'] = (int) $row['user_id'];
+                $row['importance'] = (int) ($row['importance'] ?? 0);
+                $row['reinforce_count'] = (int) ($row['reinforce_count'] ?? 0);
+                $row['ttl_days'] = $row['ttl_days'] !== null ? (int) $row['ttl_days'] : null;
+                $row['archived'] = $row['archived_at'] !== null;
+                $row['source_meta'] = $row['source_meta'] !== null ? json_decode($row['source_meta'], true) : null;
+
+                return $row;
+            }, $rows);
+
+            return ['items' => $items, 'total' => $total, 'page' => $page, 'limit' => $limit];
+        } catch (\Exception $e) {
+            error_log('[flarum-zai-bot] listMemories failed: ' . $e->getMessage());
+
+            return ['items' => [], 'total' => 0];
+        }
+    }
+
+    /**
+     * 管理用更新（后台记忆管理页）。
+     * 支持更新重要度与 TTL（content/embedding 为只读，避免向量与文本不一致）。
+     *
+     * @param int  $id         记忆 ID
+     * @param int|null $importance 新重要度 0-10（null 表示不修改）
+     * @param int|null $ttlDays 新存活天数（0 表示移除 TTL；null 表示不修改）
+     */
+    public function updateMemoryFields(int $id, ?int $importance = null, ?int $ttlDays = null): bool
+    {
+        $pdo = $this->getPdo();
+        if (!$pdo) {
+            return false;
+        }
+
+        $sets = [];
+        $params = [];
+
+        if ($importance !== null) {
+            $sets[] = 'importance = ?';
+            $params[] = max(0, min(self::IMPORTANCE_CAP, $importance));
+        }
+
+        if ($ttlDays !== null) {
+            if ($ttlDays <= 0) {
+                $sets[] = 'ttl_days = NULL';
+                $sets[] = 'expires_at = NULL';
+            } else {
+                $sets[] = 'ttl_days = ?';
+                $params[] = max(1, $ttlDays);
+                $sets[] = 'expires_at = NOW() + (? || \' days\')::interval';
+                $params[] = max(1, $ttlDays);
+            }
+        }
+
+        if ($sets === []) {
+            return true;
+        }
+
+        try {
+            $stmt = $pdo->prepare('UPDATE bot_memories SET ' . implode(', ', $sets) . ' WHERE id = ?');
+            $params[] = $id;
+            $stmt->execute($params);
+
+            return true;
+        } catch (\Exception $e) {
+            error_log('[flarum-zai-bot] updateMemoryFields failed: ' . $e->getMessage());
+
+            return false;
+        }
+    }
+
+    /**
      * 关键词路：按查询分词做 ILIKE 匹配，返回候选行。
      */
     protected function keywordCandidates(\PDO $pdo, int $userId, array $tokens, int $limit): array

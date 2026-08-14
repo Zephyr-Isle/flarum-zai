@@ -94,6 +94,12 @@ zephyrisle-flarum-zai-bot:
       memory_hybrid_vector_weight_help: 'BM25 关键词与向量语义双路召回的融合权重：向量路占比（0-100），关键词路为剩余部分。默认 60（向量 60% / 关键词 40%）。'
       memory_decay_days_label: '记忆时间衰减周期（天）'
       memory_decay_days_help: '距上次召回越久，记忆在召回排序中的分数越低。每经过该天数衰减一档（默认 30 天）。'
+      affinity_blacklist_threshold_label: '黑名单熔断阈值（好感度）'
+      affinity_blacklist_threshold_help: '好感度 ≤ 该值时自动将用户加入黑名单，黑名单用户不再触发任何 AI 回复（熔断保护）。设为 0 表示禁用自动熔断；管理员可在好感度管理页手动拉黑/恢复或一键重置。'
+      relation_network_enabled_label: '启用关系网（身份/别名/边界/待确认观察）'
+      relation_network_enabled_help: 'AI 可通过 update_relation_network 工具维护与用户的长期稳定关系信息，并在每次回复时注入关系网摘要。关闭后不注入也不提供工具。'
+      expression_learning_enabled_label: '启用表达学习（待审核/已启用/已禁用）'
+      expression_learning_enabled_help: 'AI 可通过 learn_expression 工具从对话中归纳"怎么说"（短表达/句法/情境风格），新规则一律进入待审核，管理员通过后才进入回复。关闭后不注入也不提供工具。'
       pgvector_host_label: 'PostgreSQL 主机（用于 pgvector 记忆，留空禁用）'
       pgvector_host_help: '需要 pgvector 扩展。向量维度须与模型一致（jina-embeddings-v3 为 1024）。'
       pgvector_port_label: PostgreSQL 端口
@@ -114,8 +120,8 @@ zephyrisle-flarum-zai-bot:
       failed: '失败：{error}'
 
     affinities:
-      title: Bot 好感度
-      description: 用户对 AI 机器人的好感度分数。每次互动都会增加分数。
+      title: Bot 好感度管理
+      description: '细致好感度系统：好感度主值（-100~100）、信任度、亲密度与 12 维度情感状态。点击“编辑”可手动调整，支持一键重置与黑名单管理（黑名单用户不再触发 AI 回复）。'
       loading: 加载中...
       refresh: 刷新
       no_affinities: 暂无好感度记录。
@@ -123,8 +129,143 @@ zephyrisle-flarum-zai-bot:
       page_prev: 上一页
       page_next: 下一页
       error: '加载好感度失败：{error}'
+      filter_placeholder: 搜索用户名/昵称...
+      filter_apply: 搜索
+      edit: 编辑
+      save: 保存
+      cancel: 取消
+      reset: 一键重置
+      confirm_reset: 确定重置该用户全部好感度状态（好感/信任/亲密/情感/印象/关系/黑名单）？此操作不可撤销。
+      blacklisted: 已拉黑
+      normal: 正常
+      edit_favor: 好感度（-100~100）
+      edit_trust: 信任度（-100~100）
+      edit_intimacy: 亲密度（-100~100）
+      edit_attitude: 印象描述（Attitude）
+      edit_relationship: 关系描述（Relationship）
+      edit_blacklist: 加入黑名单（不再回复）
+      level_intimate: 亲密信赖
+      level_friendly: 友好
+      level_neutral: 中立礼貌
+      level_cold: 反感
+      level_hostile: 厌恶敌对
       table:
         user: 用户
-        total_score: 好感度
+        favor: 好感度
+        trust: 信任
+        intimacy: 亲密
+        level: 等级
         interactions: 互动次数
         last_interaction: 最后互动
+        status: 状态
+        actions: 操作
+
+    memories:
+      title: 记忆管理
+      description: '管理长期记忆（pgvector）。可搜索关键词、按用户过滤、调整重要度与存活天数（TTL）、归档/恢复/删除。记忆内容与向量为只读，避免文本与向量不一致。'
+      loading: 加载中...
+      refresh: 刷新
+      no_memories: 暂无记忆记录。
+      total_records: '共 {total} 条记录'
+      page_prev: 上一页
+      page_next: 下一页
+      error: '加载记忆失败：{error}'
+      memory_disabled: '记忆系统未启用：未配置 pgvector 数据库（后台设置 → pgvector 配置）。启用后此处才能查看与管理记忆。'
+      filter_q_placeholder: 搜索记忆内容关键词...
+      filter_user_placeholder: 按用户过滤（ID 或用户名）...
+      filter_archived: 包含已归档
+      filter_apply: 搜索
+      status_active: 生效中
+      status_archived: 已归档
+      ttl_placeholder: TTL 天数（0=永久）
+      action_edit: 编辑
+      action_save: 保存
+      action_cancel: 取消
+      action_archive: 归档
+      action_restore: 恢复
+      action_delete: 删除
+      confirm_delete: 确定永久删除该记忆？此操作不可撤销。
+      table:
+        user: 用户
+        content: 记忆内容
+        importance: 重要度
+        ttl: TTL/过期
+        reinforce: 强化次数
+        created: 创建时间
+        status: 状态
+        actions: 操作
+        source: '来源：{source}'
+
+    relations:
+      title: 关系网管理
+      description: '维护每个用户的长期稳定关系信息：稳定身份、别名、社区档案备注、边界备注与待确认观察（确认后写入正式字段）。关系事实属于"是什么/为什么"，与表达学习（只保存"怎么说"）分离。'
+      loading: 加载中...
+      refresh: 刷新
+      no_relations: 暂无关系网记录。
+      total_records: '共 {total} 条记录'
+      page_prev: 上一页
+      page_next: 下一页
+      error: '加载关系网失败：{error}'
+      filter_q_placeholder: 搜索用户名/昵称...
+      filter_apply: 搜索
+      action_edit: 编辑
+      action_save: 保存
+      action_cancel: 取消
+      action_confirm: 确认
+      action_reject: 驳回
+      identity_placeholder: 稳定身份描述（长期稳定）
+      aliases_placeholder: 别名（用 、 或逗号分隔）
+      group_profile_placeholder: 社区档案备注
+      boundaries_placeholder: 边界备注（每行一条）
+      boundaries_hint: 用户明确表达的互动边界
+      no_pending: 无待确认观察
+      table:
+        user: 用户
+        identity: 稳定身份
+        aliases: 别名
+        group_profile: 社区档案
+        boundaries: 边界备注
+        pending: 待确认观察
+        actions: 操作
+
+    expressions:
+      title: 表达学习管理
+      description: '归纳"怎么说"：短表达、句法习惯与情境风格。待审核规则不进入回复，审核通过后才生效。昵称、账号、关系事实、秘密与长句不得作为表达规则。'
+      loading: 加载中...
+      refresh: 刷新
+      no_expressions: 暂无表达规则。
+      total_records: '共 {total} 条记录'
+      page_prev: 上一页
+      page_next: 下一页
+      error: '加载表达规则失败：{error}'
+      filter_q_placeholder: 搜索名称/模板/情境...
+      filter_apply: 搜索
+      tab_pending: 待审核
+      tab_active: 已启用
+      tab_disabled: 已禁用
+      action_edit: 编辑
+      action_save: 保存
+      action_cancel: 取消
+      action_approve: 通过
+      action_disable: 禁用
+      action_delete: 删除
+      confirm_delete: 确定删除该表达规则？此操作不可撤销。
+      situation_placeholder: 适用情境
+      tags_placeholder: 召回标签（用 、 或逗号分隔）
+      scope_placeholder: '适用边界，如 channels:discussion,private_message; users:1,2; discussions:3'
+      no_evidence: 无证据记录
+      usage_times: 次
+      source_discussion: 讨论
+      source_private_message: 私聊
+      source_manual: 手动
+      table:
+        name: 名称
+        situation: 情境
+        template: 表达模板
+        tags: 召回标签
+        source: 来源
+        usage: 使用次数
+        actions: 操作
+        syntax: 句法
+        scope: 适用边界
+        evidence: 证据（只读）

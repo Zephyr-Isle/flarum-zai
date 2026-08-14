@@ -148,6 +148,145 @@
         font-size: 14px;
     }
 
+    .affinity-filters {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        margin-bottom: 14px;
+
+        .FormControl {
+            max-width: 260px;
+        }
+    }
+
+    .affinity-level {
+        color: #667c99;
+        font-size: 12px;
+        white-space: nowrap;
+    }
+
+    .affinity-sub {
+        color: #667c99;
+    }
+
+    .affinity-status {
+        white-space: nowrap;
+    }
+
+    .affinity-row--blacklisted {
+        td {
+            background: #fdeeee;
+        }
+
+        .affinity-status {
+            color: #c62828;
+            font-weight: 700;
+        }
+    }
+
+    .affinity-row--editing td {
+        background: #f3f8ff;
+        padding: 14px;
+    }
+
+    .affinity-editor {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+    }
+
+    .affinity-editor-main {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 10px 14px;
+
+        label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            color: #667c99;
+            margin-bottom: 4px;
+        }
+
+        .FormControl {
+            width: 100%;
+        }
+    }
+
+    .affinity-editor-field--wide {
+        grid-column: span 2;
+    }
+
+    .affinity-editor-blacklist {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        color: #c62828;
+        margin-top: 6px;
+    }
+
+    .affinity-editor-emotions {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 8px 12px;
+        padding-top: 12px;
+        border-top: 1px solid #e6ecf2;
+    }
+
+    .affinity-emotion {
+        label {
+            display: inline-block;
+            font-size: 12px;
+            color: #667c99;
+            min-width: 48px;
+        }
+
+        .FormControl {
+            width: 90px;
+            display: inline-block;
+            padding: 4px 8px;
+        }
+    }
+
+    .affinity-editor-actions {
+        display: flex;
+        gap: 8px;
+        padding-top: 12px;
+        border-top: 1px solid #e6ecf2;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        .affinity-row--blacklisted td {
+            background: #3a1e2e;
+        }
+
+        .affinity-row--editing td {
+            background: #16213e;
+        }
+
+        .affinity-editor-main label {
+            color: #8899b0;
+        }
+
+        .affinity-editor-emotions {
+            border-top-color: #2a3a5a;
+
+            .affinity-emotion label {
+                color: #8899b0;
+            }
+        }
+
+        .affinity-editor-actions {
+            border-top-color: #2a3a5a;
+        }
+
+        .affinity-level,
+        .affinity-sub {
+            color: #8899b0;
+        }
+    }
+
     .affinity-loading {
         text-align: center;
         padding: 40px 20px;
@@ -211,6 +350,248 @@
     }
 }
 
+// ===== 记忆管理页 =====
+.ZaiBot-memories {
+    .memory-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+    }
+
+    .memory-header-actions {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .memory-total {
+        font-size: 12px;
+        color: #7c7c7c;
+    }
+
+    .memory-summary {
+        color: #7c7c7c;
+        font-size: 13px;
+        margin-bottom: 20px;
+    }
+
+    .memory-filters {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-bottom: 14px;
+
+        .FormControl {
+            max-width: 260px;
+        }
+
+        .memory-filter-archived {
+            font-size: 13px;
+            color: #667c99;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+    }
+
+    .memory-table-wrap {
+        background: #fff;
+        border-radius: 8px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, .08);
+        overflow: hidden;
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+
+        th {
+            background: #f6f9fc;
+            font-size: 11px;
+            font-weight: 700;
+            color: #667c99;
+            padding: 10px 12px;
+            text-align: left;
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            border-bottom: 2px solid #e6ecf2;
+        }
+
+        td {
+            padding: 10px 12px;
+            font-size: 13px;
+            border-bottom: 1px solid #f0f4f8;
+            color: #333;
+            word-break: break-word;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        tr:hover td {
+            background: #f8fafc;
+        }
+    }
+
+    .memory-user {
+        font-weight: 600;
+
+        small {
+            color: #999;
+            font-weight: 400;
+        }
+    }
+
+    .memory-content-cell {
+        max-width: 380px;
+    }
+
+    .memory-content {
+        font-size: 13px;
+        line-height: 1.5;
+    }
+
+    .memory-source {
+        font-size: 11px;
+        color: #999;
+        margin-top: 4px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .memory-importance {
+        font-weight: 700;
+    }
+
+    .memory-expires {
+        font-size: 11px;
+        color: #999;
+    }
+
+    .memory-created {
+        color: #667c99;
+        font-size: 12px;
+        white-space: nowrap;
+    }
+
+    .memory-status {
+        white-space: nowrap;
+    }
+
+    .memory-row--archived td {
+        opacity: .55;
+    }
+
+    .memory-actions {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+
+        .Button {
+            min-height: 0;
+            padding: 4px 10px;
+            font-size: 12px;
+        }
+    }
+
+    .memory-pagination {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 12px;
+        padding: 12px;
+        border-top: 1px solid #f0f4f8;
+
+        .Button {
+            min-width: 36px;
+            padding: 4px 0;
+            font-size: 16px;
+            line-height: 1;
+        }
+
+        .memory-page-info {
+            font-size: 13px;
+            color: #667c99;
+        }
+    }
+
+    .memory-empty {
+        text-align: center;
+        padding: 40px 20px;
+        color: #999;
+        font-size: 14px;
+    }
+
+    .memory-loading {
+        text-align: center;
+        padding: 40px 20px;
+    }
+
+    .Button--refresh {
+        margin-bottom: 16px;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        .memory-table-wrap {
+            background: #1a1a2e;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, .3);
+        }
+
+        table {
+            th {
+                background: #16213e;
+                color: #8899b0;
+                border-bottom-color: #2a3a5a;
+            }
+
+            td {
+                border-bottom-color: #222;
+                color: #c8d0dc;
+            }
+
+            tr:hover td {
+                background: #1e2a4a;
+            }
+        }
+
+        .memory-summary,
+        .memory-total {
+            color: #8899b0;
+        }
+
+        .memory-filters .memory-filter-archived {
+            color: #8899b0;
+        }
+
+        .memory-source,
+        .memory-expires,
+        .memory-user small {
+            color: #667;
+        }
+
+        .memory-created {
+            color: #8899b0;
+        }
+
+        .memory-pagination {
+            border-top-color: #222;
+
+            .memory-page-info {
+                color: #8899b0;
+            }
+        }
+
+        .memory-empty {
+            color: #667;
+        }
+    }
+}
+
 @media (prefers-color-scheme: dark) {
     .ZaiBot-test {
         background: #16213e;
@@ -232,6 +613,211 @@
             &--fail {
                 color: #ef9a9a;
             }
+        }
+    }
+}
+
+// ===== 关系网管理页 =====
+.ZaiBot-relations {
+    .relation-cell {
+        min-width: 140px;
+    }
+
+    .relation-textarea {
+        min-width: 140px;
+        resize: vertical;
+    }
+
+    .relation-hint {
+        font-size: 11px;
+        color: #999;
+        margin-top: 4px;
+    }
+
+    .relation-muted {
+        color: #999;
+        font-size: 12px;
+    }
+
+    .relation-pending {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        max-width: 260px;
+    }
+
+    .relation-pending-item {
+        background: #fff8e6;
+        border: 1px solid #f0dfa8;
+        border-radius: 6px;
+        padding: 6px 8px;
+        font-size: 12px;
+
+        small {
+            display: block;
+            color: #a08a4c;
+            margin-top: 2px;
+        }
+    }
+
+    .relation-pending-item--static {
+        background: transparent;
+        border-color: #e6ecf2;
+    }
+
+    .relation-pending-actions {
+        display: flex;
+        gap: 6px;
+        margin-top: 6px;
+
+        .Button--small {
+            min-height: 0;
+            padding: 2px 8px;
+            font-size: 11px;
+        }
+    }
+
+    .relation-boundary-list {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        max-width: 240px;
+    }
+
+    .relation-boundary-item {
+        font-size: 12px;
+        background: #fdeeee;
+        border-radius: 4px;
+        padding: 4px 8px;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        .relation-hint,
+        .relation-muted {
+            color: #667;
+        }
+
+        .relation-pending-item {
+            background: #2a2414;
+            border-color: #4a4024;
+
+            small {
+                color: #a8904c;
+            }
+        }
+
+        .relation-pending-item--static {
+            background: transparent;
+            border-color: #2a3a5a;
+        }
+
+        .relation-boundary-item {
+            background: #3a1e2e;
+        }
+    }
+}
+
+// ===== 表达学习页 =====
+.ZaiBot-expressions {
+    .expression-tabs {
+        display: flex;
+        gap: 4px;
+
+        .expression-tab {
+            &--active {
+                background: #38506b;
+                color: #fff;
+            }
+        }
+    }
+
+    .expression-search {
+        max-width: 220px;
+    }
+
+    .expression-row {
+        &--pending td {
+            background: #fffdf2;
+        }
+
+        &--disabled td {
+            opacity: .55;
+        }
+    }
+
+    .expression-name {
+        min-width: 130px;
+    }
+
+    .expression-cell {
+        min-width: 120px;
+    }
+
+    .expression-template-input {
+        resize: vertical;
+    }
+
+    .expression-usage {
+        font-weight: 700;
+        white-space: nowrap;
+    }
+
+    .expression-editor-row td {
+        background: #f3f8ff !important;
+    }
+
+    .expression-editor {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 10px 14px;
+    }
+
+    .expression-editor-field {
+        display: block;
+    }
+
+    .expression-editor-field--readonly {
+        .expression-editor-label {
+            color: #999;
+        }
+    }
+
+    .expression-editor-label {
+        display: block;
+        font-size: 12px;
+        font-weight: 600;
+        color: #667c99;
+        margin-bottom: 4px;
+    }
+
+    .expression-evidence {
+        font-size: 12px;
+        color: #555;
+        background: #f6f9fc;
+        border-radius: 4px;
+        padding: 6px 8px;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        .expression-row--pending td {
+            background: #2a2414;
+        }
+
+        .expression-editor-row td {
+            background: #16213e !important;
+        }
+
+        .expression-editor-label {
+            color: #8899b0;
+        }
+
+        .expression-editor-field--readonly .expression-editor-label {
+            color: #667;
+        }
+
+        .expression-evidence {
+            color: #c8d0dc;
+            background: #16213e;
         }
     }
 }
