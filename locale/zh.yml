@@ -48,12 +48,6 @@ zephyrisle-flarum-zai-bot:
       embedding_api_url_help: '默认使用 Jina AI（https://api.jina.ai/v1），也可填写任意 OpenAI 兼容的 Embedding 端点。'
       embedding_api_key_label: 'Embedding API 密钥'
       embedding_api_key_help: '与上方 LLM 供应商密钥相互独立，可在 jina.ai 免费申请。支持多个密钥（逗号分隔），系统会自动轮询。'
-      jina_key_test: '测试密钥'
-      jina_key_test_success: '密钥有效'
-      jina_key_test_fail: '密钥无效'
-      jina_key_test_testing: '测试中...'
-      jina_key_generate: '获取新密钥'
-      jina_key_generate_help: '打开 Jina 官网获取免费 API 密钥（每个 Key 1000万免费 tokens）'
       embedding_model_label: Embedding 模型
       embedding_model_help: '用于向量记忆（pgvector）的 Embedding 模型。默认 jina-embeddings-v3（1024 维，须与 pgvector 列维度一致）。其他 Jina 模型维度可能不同（如 v2 为 768），将无法写入 1024 维的列。'
       wake_mention_rules_enabled_label: '提及唤醒规则'

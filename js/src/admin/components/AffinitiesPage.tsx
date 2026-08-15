@@ -21,8 +21,6 @@ export default class AffinitiesPage extends ExtensionPage {
     error: string | null = null;
     testResults: any = {};
     testing: string | null = null;
-    jinaKeyTesting = false;
-    jinaKeyResult: any = null;
 
     q = '';
 
@@ -60,40 +58,6 @@ export default class AffinitiesPage extends ExtensionPage {
             .catch((e: any) => {
                 this.testResults = { requestError: e.statusText || e.message || 'Request failed' };
                 this.testing = null;
-                m.redraw();
-            });
-    }
-
-    testJinaKey() {
-        if (this.jinaKeyTesting) return;
-        this.jinaKeyTesting = true;
-        this.jinaKeyResult = null;
-        m.redraw();
-
-        // 获取当前配置的 embedding API key
-        const currentKey = app.data.settings['flarum-zai-bot.embedding_api_key'] || '';
-        const firstKey = currentKey.split(',').map((k: string) => k.trim()).filter(Boolean)[0] || '';
-
-        if (!firstKey) {
-            this.jinaKeyResult = { valid: false, error: '未配置 Embedding API Key' };
-            this.jinaKeyTesting = false;
-            m.redraw();
-            return;
-        }
-
-        app.request({
-            method: 'POST',
-            url: app.forum.attribute('apiUrl') + '/zai-bot/jina/test-key',
-            body: { api_key: firstKey },
-        })
-            .then((data: any) => {
-                this.jinaKeyResult = data;
-                this.jinaKeyTesting = false;
-                m.redraw();
-            })
-            .catch((e: any) => {
-                this.jinaKeyResult = { valid: false, error: e.response?.error || e.statusText || e.message || '测试失败' };
-                this.jinaKeyTesting = false;
                 m.redraw();
             });
     }
@@ -234,32 +198,9 @@ export default class AffinitiesPage extends ExtensionPage {
             this.testResults.requestError ? m('div', { className: 'ZaiBot-test-row ZaiBot-test-result--fail' }, this.testResults.requestError) : null,
         ]);
 
-        // Jina Key Manager section
-        const jinaKeySection = m('div', { className: 'ZaiBot-jina-key-manager' }, [
-            m('h3', { className: 'ZaiBot-test-title' }, 'Jina API Key 管理'),
-            m('p', { className: 'ZaiBot-test-desc' }, '每个 Jina Key 有 1000万免费 tokens，支持多个密钥轮询。'),
-            m('div', { className: 'ZaiBot-jina-key-actions' }, [
-                m('button', {
-                    className: 'Button Button--primary',
-                    onclick: () => this.testJinaKey(),
-                    disabled: this.jinaKeyTesting,
-                }, this.jinaKeyTesting ? '测试中...' : '测试当前密钥'),
-                m('a', {
-                    className: 'Button Button--secondary',
-                    href: 'https://jina.ai/',
-                    target: '_blank',
-                    rel: 'noopener noreferrer',
-                }, '获取新密钥 →'),
-            ]),
-            this.jinaKeyResult ? m('div', {
-                className: 'ZaiBot-test-row ' + (this.jinaKeyResult.valid ? 'ZaiBot-test-result--ok' : 'ZaiBot-test-result--fail'),
-            }, this.jinaKeyResult.valid ? '✅ 密钥有效' + (this.jinaKeyResult.balance != null ? '（余额: ' + this.jinaKeyResult.balance + ' tokens）' : '') : '❌ ' + (this.jinaKeyResult.error || '密钥无效')) : null,
-        ]);
-
         return [
             m(ProvidersSettings, { stream: this.setting('flarum-zai-bot.providers') }),
             super.content(),
-            jinaKeySection,
             testSection,
         ];
     }
