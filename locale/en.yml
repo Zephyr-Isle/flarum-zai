@@ -107,18 +107,19 @@ zephyrisle-flarum-zai-bot:
       expression_learning_enabled_help: 'The AI can generalize "how to say things" (short expressions, syntax, situational style) from conversations via the learn_expression tool. New rules always enter pending review and only enter replies after admin approval. Disable to skip injection and the tool.'
       agnes_api_key_label: 'Agnes AI API Key'
       agnes_api_key_help: 'Used for image/video generation. The AI calls generate_image / generate_video tools with this key. Leave empty to disable generation.'
-    agnes_test:
-      title: Agnes AI Test
-      description: Test Agnes AI API Key connectivity and verify the key is valid.
-      test_button: Test Agnes Key
-      success: '✅ Verification successful (model: {model})'
-      failed: '❌ Verification failed: {error}'
       pgvector_host_label: 'PostgreSQL Host (for pgvector memory, leave empty to disable)'
       pgvector_host_help: 'Requires the pgvector extension. Embedding dimension must match the model (jina-embeddings-v3 = 1024).'
       pgvector_port_label: PostgreSQL Port
       pgvector_db_label: PostgreSQL Database
       pgvector_user_label: PostgreSQL User
       pgvector_password_label: PostgreSQL Password
+
+    agnes_test:
+      title: Agnes AI Test
+      description: Test Agnes AI API Key connectivity and verify the key is valid.
+      test_button: Test Agnes Key
+      success: '✅ Verification successful (model: {model})'
+      failed: '❌ Verification failed: {error}'
 
     api_test:
       title: API Test
