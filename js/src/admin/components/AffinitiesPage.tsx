@@ -1,10 +1,18 @@
 import app from 'flarum/admin/app';
 import ExtensionPage from 'flarum/admin/components/ExtensionPage';
 import ProvidersSettings from './ProvidersSettings';
+import MemoriesPage from './MemoriesPage';
+import RelationsPage from './RelationsPage';
+import ExpressionsPage from './ExpressionsPage';
 
 const EMOTION_KEYS = ['joy', 'trust', 'fear', 'surprise', 'sadness', 'disgust', 'anger', 'anticipation', 'pride', 'guilt', 'shame', 'envy'];
 
+const TABS = ['settings', 'affinities', 'memories', 'relations', 'expressions'] as const;
+
+type Tab = typeof TABS[number];
+
 export default class AffinitiesPage extends ExtensionPage {
+    currentTab: Tab = 'settings';
     affinities: any[] = [];
     total = 0;
     page = 1;
@@ -126,7 +134,46 @@ export default class AffinitiesPage extends ExtensionPage {
         }));
     }
 
-    content() {
+    tabLabel(key: Tab): string {
+        const map: Record<Tab, string> = {
+            settings: this.t('tab_settings'),
+            affinities: this.t('tab_affinities'),
+            memories: this.t('tab_memories'),
+            relations: this.t('tab_relations'),
+            expressions: this.t('tab_expressions'),
+        };
+        return map[key];
+    }
+
+    renderTabBar() {
+        return m('div', { className: 'ZaiBot-nav-tabs' },
+            TABS.map((tab) =>
+                m('button', {
+                    className: 'Button' + (this.currentTab === tab ? ' Button--primary' : ''),
+                    onclick: () => { this.currentTab = tab; m.redraw(); },
+                }, this.tabLabel(tab))
+            )
+        );
+    }
+
+    renderTabContent() {
+        switch (this.currentTab) {
+            case 'settings':
+                return this.renderSettingsTab();
+            case 'affinities':
+                return this.renderAffinitiesTab();
+            case 'memories':
+                return m(MemoriesPage);
+            case 'relations':
+                return m(RelationsPage);
+            case 'expressions':
+                return m(ExpressionsPage);
+            default:
+                return null;
+        }
+    }
+
+    renderSettingsTab() {
         const testButton = (type: string, label: string) => m('button', {
             className: 'Button' + (this.testing === type ? ' Button--loading' : ''),
             onclick: () => this.testApi(type),
@@ -155,6 +202,11 @@ export default class AffinitiesPage extends ExtensionPage {
             m(ProvidersSettings, { stream: this.setting('flarum-zai-bot.providers') }),
             super.content(),
             testSection,
+        ];
+    }
+
+    renderAffinitiesTab() {
+        return [
             m('div', { className: 'ZaiBot-affinities' }, [
                 m('div', { className: 'affinity-header' }, [
                     m('h2', this.t('affinities.title')),
@@ -191,6 +243,13 @@ export default class AffinitiesPage extends ExtensionPage {
                     ? m('div', { className: 'Alert Alert--error' }, this.t('affinities.error', { error: this.error }))
                     : this.renderTable(),
             ]),
+        ];
+    }
+
+    content() {
+        return [
+            this.renderTabBar(),
+            this.renderTabContent(),
         ];
     }
 

@@ -1,5 +1,10 @@
 zephyrisle-flarum-zai-bot:
   admin:
+    tab_settings: Settings
+    tab_affinities: Affinities
+    tab_memories: Memories
+    tab_relations: Relations
+    tab_expressions: Expressions
     settings:
       providers_label: 'Providers'
       providers_help: 'Configure one or more AI providers. They are tried in order; if one fails the next is used automatically. Multiple keys on the same provider also fail over and are used round-robin. LLM chat requests use this configuration; Embedding has its own independent settings below.'

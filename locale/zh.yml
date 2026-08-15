@@ -1,5 +1,10 @@
 zephyrisle-flarum-zai-bot:
   admin:
+    tab_settings: 设置
+    tab_affinities: 好感度
+    tab_memories: 记忆
+    tab_relations: 关系网
+    tab_expressions: 表达
     settings:
       providers_label: '供应商配置'
       providers_help: '配置一个或多个 AI 供应商，按顺序尝试，失败自动回退到下一个；同一供应商的多个密钥也会自动故障转移与轮询。仅 LLM 对话请求使用此配置；Embedding 使用下方独立的设置。'
