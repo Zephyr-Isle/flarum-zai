@@ -1,17 +1,14 @@
 import app from 'flarum/admin/app';
 import Extend from 'flarum/common/extenders';
 import AffinitiesPage from './components/AffinitiesPage';
-import MemoriesPage from './components/MemoriesPage';
-import RelationsPage from './components/RelationsPage';
-import ExpressionsPage from './components/ExpressionsPage';
 
 const t = (key: string, params?: any) => app.translator.trans('zephyrisle-flarum-zai-bot.admin.settings.' + key, params);
 
 export default [
-    // 显式指定 context，确保 registry 的命名空间与扩展 id（zephyrisle-flarum-zai-bot）
-    // 一致。若不指定，将回退到运行时的 flarum.extensions 键（部分 Flarum 版本
-    // 使用 vendor/package 斜杠形式），导致设置项注册到错误的命名空间而无设置项显示。
-    new Extend.Admin('zephyrisle-flarum-zai-bot')
+    // 不传 context 参数——Flarum 2.x 会自动从 extension.name（即 composer 包名）
+    // 推断扩展 ID，确保 registry 命名空间正确。显式传入错误的 ID 反而导致
+    // 设置项注册到不存在的扩展键上，后台页面无内容显示。
+    new Extend.Admin()
         // 供应商图形化配置（ProvidersSettings）由自定义页 AffinitiesPage 直接渲染，
         // 内部读写 flarum-zai-bot.providers（JSON），随设置表单一起保存。
         .setting(() => ({
@@ -347,8 +344,5 @@ export default [
             label: t('pgvector_password_label'),
             type: 'password',
         }))
-        .page(AffinitiesPage)
-        .page(MemoriesPage)
-        .page(RelationsPage)
-        .page(ExpressionsPage),
+        .page(AffinitiesPage),
 ];
