@@ -139,7 +139,7 @@ return [
         // 免鉴权图片代理：供 AI 模型视觉 API 拉取 fof/upload 的私有图片（见 ImageExtractor / VisionImageController）
         ->get('/zai-bot/vision-image/{uuid}', 'zai-bot.vision-image', \Zephyrisle\FlarumZaiBot\Api\Controller\VisionImageController::class)
         // Agnes AI API 代理：图片/视频生成（需管理员权限）
-        ->any('/zai-bot/agnes/{path:.+}', 'zai-bot.agnes-proxy', \Zephyrisle\FlarumZaiBot\Api\Controller\AgnesProxyController::class)
+        ->post('/zai-bot/agnes/{path:.+}', 'zai-bot.agnes-proxy', \Zephyrisle\FlarumZaiBot\Api\Controller\AgnesProxyController::class)
         // Jina API Key 测试
         ->post('/zai-bot/jina/test-key', 'zai-bot.jina.test-key', \Zephyrisle\FlarumZaiBot\Api\Controller\TestJinaKeyController::class),
 ];
