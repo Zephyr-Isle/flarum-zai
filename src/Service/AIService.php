@@ -166,6 +166,101 @@ class AIService
             $messages[] = ['role' => 'system', 'content' => (string) $context['injected_context']];
         }
 
+        // flarum/tags: 讨论标签
+        if (!empty($context['discussion_tags'])) {
+            $messages[] = ['role' => 'system', 'content' => "讨论标签：{$context['discussion_tags']}"];
+        }
+
+        // fof/upload: 文件附件
+        if (!empty($context['file_attachments'])) {
+            $messages[] = ['role' => 'system', 'content' => "帖子中的文件附件：\n{$context['file_attachments']}"];
+        }
+
+        // fof/polls: 投票信息
+        if (!empty($context['poll_info'])) {
+            $messages[] = ['role' => 'system', 'content' => $context['poll_info']];
+        }
+
+        // fof/pages: 关联页面内容
+        if (!empty($context['page_context'])) {
+            $messages[] = ['role' => 'system', 'content' => $context['page_context']];
+        }
+
+        // linkrobins/wiki: Wiki 文章内容
+        if (!empty($context['wiki_context'])) {
+            $messages[] = ['role' => 'system', 'content' => $context['wiki_context']];
+        }
+
+        // fof/byobu: 私有讨论上下文
+        if (!empty($context['is_private_discussion'])) {
+            $privateInfo = '当前讨论为私有讨论（仅限特定参与者可见）';
+            if (!empty($context['private_recipients'])) {
+                $privateInfo .= "，参与者：{$context['private_recipients']}";
+            }
+            if (!empty($context['private_recipient_groups'])) {
+                $privateInfo .= "，参与组：{$context['private_recipient_groups']}";
+            }
+            $messages[] = ['role' => 'system', 'content' => $privateInfo];
+        }
+
+        // fof/socialprofile: 用户社交资料
+        if (!empty($context['social_profiles'])) {
+            $messages[] = ['role' => 'system', 'content' => "用户社交资料：\n{$context['social_profiles']}"];
+        }
+
+        // fof/geoip: 用户地理位置
+        if (!empty($context['user_location'])) {
+            $messages[] = ['role' => 'system', 'content' => "用户地理位置：{$context['user_location']}"];
+        }
+
+        // fof/prevent-necrobumping: 挖坟提示
+        if (!empty($context['necro_bump'])) {
+            $days = $context['necro_days'] ?? 0;
+            $messages[] = ['role' => 'system', 'content' => "⚠️ 挖坟提醒：该讨论已超过 {$days} 天无人回复，现在回复可能会打扰其他用户。请谨慎判断是否值得回复，如果内容与讨论主题无关或价值不高，建议保持沉默。"];
+        }
+
+        // fof/impersonate: 检测管理员模拟身份（通过请求上下文传递）
+        if (!empty($context['is_impersonated'])) {
+            $messages[] = ['role' => 'system', 'content' => "注意：当前操作者正在模拟用户身份，实际操作者是管理员。"];
+        }
+
+        // flarum/sticky: 置顶讨论
+        if (!empty($context['is_sticky'])) {
+            $messages[] = ['role' => 'system', 'content' => "该讨论为置顶讨论，请重视回复质量。"];
+        }
+
+        // fof/discussion-views: 讨论人气
+        if (!empty($context['discussion_popularity'])) {
+            $level = $context['discussion_popularity'];
+            $messages[] = ['role' => 'system', 'content' => "讨论热度：{$level}（浏览量较高，回复会被更多人看到）"];
+        }
+
+        // flarum/subscriptions: 用户订阅状态
+        if (!empty($context['user_subscription'])) {
+            $state = $context['user_subscription'];
+            $messages[] = ['role' => 'system', 'content' => "用户对该讨论的订阅状态：{$state}"];
+        }
+
+        // fof/follow-tags: 用户关注的标签
+        if (!empty($context['followed_tags'])) {
+            $messages[] = ['role' => 'system', 'content' => "用户关注的标签：{$context['followed_tags']}"];
+        }
+
+        // linkrobins/auto-verify: 新用户标识
+        if (!empty($context['new_user'])) {
+            $messages[] = ['role' => 'system', 'content' => "该用户为新注册用户（7天内），请友善对待。"];
+        }
+
+        // tryhackx/flarum-advanced-pages: 高级页面内容
+        if (!empty($context['advanced_page_context'])) {
+            $messages[] = ['role' => 'system', 'content' => $context['advanced_page_context']];
+        }
+
+        // shebaoting/flarum-repost: 转发内容
+        if (!empty($context['repost_context'])) {
+            $messages[] = ['role' => 'system', 'content' => $context['repost_context']];
+        }
+
         // 用户消息附带图片（http(s) 或 data:image/ 的 URL），以及对话历史中的图片
         // （history_images，每项含 url/label）。仅当端点模型支持识图时才会以多模态
         // 形式发送（见 buildUserContent / 端点循环）。

@@ -36,9 +36,27 @@ class EmbeddingService
         return rtrim((string) $this->settings->get('flarum-zai-bot.embedding_api_url', self::DEFAULT_API_URL), '/');
     }
 
+    /**
+     * 获取 API Key：支持单个密钥或逗号分隔的多个密钥。
+     * 返回第一个可用的密钥（用于单次请求）。
+     */
     public function apiKey(): string
     {
-        return trim((string) $this->settings->get('flarum-zai-bot.embedding_api_key', ''));
+        $keys = $this->apiKeys();
+        return $keys[0] ?? '';
+    }
+
+    /**
+     * 获取所有 API Keys（支持逗号分隔的多个密钥）。
+     */
+    public function apiKeys(): array
+    {
+        $raw = trim((string) $this->settings->get('flarum-zai-bot.embedding_api_key', ''));
+        if ($raw === '') {
+            return [];
+        }
+
+        return array_values(array_filter(array_map('trim', explode(',', $raw))));
     }
 
     public function model(): string
@@ -66,40 +84,75 @@ class EmbeddingService
     }
 
     /**
-     * 对文本生成 embedding 向量；未配置密钥或请求失败时返回 null。
+     * 获取轮询起始索引（基于上次成功密钥索引 +1）。
+     */
+    protected function nextStartIndex(int $count): int
+    {
+        if ($count <= 0) {
+            return 0;
+        }
+
+        $lastIndex = (int) $this->settings->get('flarum-zai-bot.last_embedding_key_index', -1);
+        return ($lastIndex + 1) % $count;
+    }
+
+    /**
+     * 记录成功使用的密钥索引。
+     */
+    protected function saveIndex(int $originalCount, int $usedIndex): void
+    {
+        $this->settings->set('flarum-zai-bot.last_embedding_key_index', (string) $usedIndex);
+    }
+
+    /**
+     * 对文本生成 embedding 向量；支持多密钥自动回退与轮询。
      */
     public function generateEmbedding(string $text): ?array
     {
-        if (!$this->isConfigured()) {
+        $keys = $this->apiKeys();
+        if (empty($keys)) {
             error_log('[flarum-zai-bot] generateEmbedding: embedding API key not configured.');
             return null;
         }
 
         $model = $this->model();
+        $payload = $this->payload($text);
+        $originalCount = count($keys);
+        $startIndex = $this->nextStartIndex($originalCount);
 
-        try {
-            $response = $this->client->post($this->apiUrl() . '/embeddings', [
-                'headers' => [
-                    'Authorization' => 'Bearer ' . $this->apiKey(),
-                    'Content-Type' => 'application/json',
-                    'Accept' => 'application/json',
-                ],
-                'json' => $this->payload($text),
-                'timeout' => 15,
-            ]);
+        // 轮询：从 startIndex 开始，依次尝试所有密钥
+        for ($attempt = 0; $attempt < $originalCount; $attempt++) {
+            $index = ($startIndex + $attempt) % $originalCount;
+            $apiKey = $keys[$index];
 
-            $body = json_decode($response->getBody(), true);
-            $embedding = $body['data'][0]['embedding'] ?? null;
+            try {
+                $response = $this->client->post($this->apiUrl() . '/embeddings', [
+                    'headers' => [
+                        'Authorization' => 'Bearer ' . $apiKey,
+                        'Content-Type' => 'application/json',
+                        'Accept' => 'application/json',
+                    ],
+                    'json' => $payload,
+                    'timeout' => 15,
+                ]);
 
-            if (is_array($embedding) && count($embedding) > 0) {
-                return $embedding;
+                $body = json_decode($response->getBody(), true);
+                $embedding = $body['data'][0]['embedding'] ?? null;
+
+                if (is_array($embedding) && count($embedding) > 0) {
+                    // 成功：记录使用的密钥索引
+                    $this->saveIndex($originalCount, $index);
+                    return $embedding;
+                }
+
+                error_log('[flarum-zai-bot] generateEmbedding: empty embedding returned. body=' . json_encode($body));
+            } catch (\Exception $e) {
+                error_log('[flarum-zai-bot] generateEmbedding failed (key index ' . $index . '): ' . $e->getMessage() . ' | model: ' . $model);
+                continue;
             }
-
-            error_log('[flarum-zai-bot] generateEmbedding: empty embedding returned. body=' . json_encode($body));
-            return null;
-        } catch (\Exception $e) {
-            error_log('[flarum-zai-bot] generateEmbedding failed: ' . $e->getMessage() . ' | model: ' . $model);
-            return null;
         }
+
+        error_log('[flarum-zai-bot] generateEmbedding exhausted all ' . $originalCount . ' API keys.');
+        return null;
     }
 }

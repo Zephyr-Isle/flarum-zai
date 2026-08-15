@@ -14,6 +14,20 @@ use Flarum\Post\Event\Revised;
 use Flarum\Settings\SettingsRepositoryInterface;
 use Zephyrisle\FlarumZaiBot\Model\ContextEvent;
 
+// fof/merge-discussions & fof/move-posts & fof/split 事件（条件导入，扩展未安装时不存在）
+if (class_exists('\FoF\MergeDiscussions\Events\DiscussionWasMerged')) {
+    class_alias('\FoF\MergeDiscussions\Events\DiscussionWasMerged', 'ZaiBot_DiscussionWasMerged');
+}
+if (class_exists('\FoF\MovePosts\Event\PostsMoved')) {
+    class_alias('\FoF\MovePosts\Event\PostsMoved', 'ZaiBot_PostsMoved');
+}
+if (class_exists('\FoF\Split\Events\DiscussionWasSplit')) {
+    class_alias('\FoF\Split\Events\DiscussionWasSplit', 'ZaiBot_DiscussionWasSplit');
+}
+if (class_exists('\FoF\ModeratorWarnings\Models\Warning')) {
+    class_alias('\FoF\ModeratorWarnings\Models\Warning', 'ZaiBot_ModeratorWarning');
+}
+
 /**
  * 事件记录：把论坛中的通知/管理类事件写入 bot_context_events 表，
  * 供 ContextInjectionService 在回复前聚合注入给模型。
@@ -55,6 +69,12 @@ class RecordContextEvent
             $event instanceof DiscussionHidden => $this->onDiscussionHidden($event),
             $event instanceof DiscussionRestored => $this->onDiscussionRestored($event),
             $event instanceof DiscussionDeleted => $this->onDiscussionDeleted($event),
+            // fof/merge-discussions: 讨论合并事件
+            class_exists('ZaiBot_DiscussionWasMerged') && $event instanceof \ZaiBot_DiscussionWasMerged => $this->onDiscussionMerged($event),
+            // fof/move-posts: 帖子移动事件
+            class_exists('ZaiBot_PostsMoved') && $event instanceof \ZaiBot_PostsMoved => $this->onPostsMoved($event),
+            // fof/split: 讨论拆分事件
+            class_exists('ZaiBot_DiscussionWasSplit') && $event instanceof \ZaiBot_DiscussionWasSplit => $this->onDiscussionSplit($event),
             default => null,
         };
     }
@@ -155,6 +175,65 @@ class RecordContextEvent
             $event->actor?->id,
             'discussion_deleted',
             "讨论「{$event->discussion->title}」被删除"
+        );
+    }
+
+    /**
+     * fof/merge-discussions: 讨论被合并
+     */
+    public function onDiscussionMerged($event): void
+    {
+        $mergedIds = $event->mergedDiscussions->pluck('id')->implode(',');
+        $this->record(
+            $event->discussion->id,
+            null,
+            $event->actor?->id ?? null,
+            'discussion_merged',
+            "讨论 [{$mergedIds}] 被合并到讨论「{$event->discussion->title}」(ID:{$event->discussion->id})"
+        );
+    }
+
+    /**
+     * fof/move-posts: 帖子被移动
+     */
+    public function onPostsMoved($event): void
+    {
+        $postIds = $event->posts->pluck('id')->implode(',');
+        $this->record(
+            $event->sourceDiscussion->id,
+            null,
+            null,
+            'posts_moved',
+            "帖子 [{$postIds}] 从讨论「{$event->sourceDiscussion->title}」移动到讨论「{$event->targetDiscussion->title}」"
+        );
+    }
+
+    /**
+     * fof/split: 讨论被拆分
+     */
+    public function onDiscussionSplit($event): void
+    {
+        $postIds = $event->posts->pluck('id')->implode(',');
+        $this->record(
+            $event->discussion->id,
+            null,
+            $event->actor?->id ?? null,
+            'discussion_split',
+            "帖子 [{$postIds}] 从讨论「{$event->discussion->title}」拆分到新讨论「{$event->newDiscussion->title}」(ID:{$event->newDiscussion->id})"
+        );
+    }
+
+    /**
+     * fof/moderator-warnings: 用户收到警告
+     */
+    public function onWarningIssued($event): void
+    {
+        $this->record(
+            null,
+            null,
+            $event->warning->user_id,
+            'warning_issued',
+            "用户收到警告（类型：" . ($event->warning->type ?? '未知') . "）"
         );
     }
 

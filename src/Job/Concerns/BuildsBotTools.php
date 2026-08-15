@@ -7,6 +7,14 @@ use Zephyrisle\FlarumZaiBot\Service\ExpressionService;
 use Zephyrisle\FlarumZaiBot\Service\MemoryService;
 use Zephyrisle\FlarumZaiBot\Service\PortraitService;
 use Zephyrisle\FlarumZaiBot\Service\RelationService;
+use Zephyrisle\FlarumZaiBot\Service\Tool\BestAnswerTool;
+use Zephyrisle\FlarumZaiBot\Service\Tool\DraftTool;
+use Zephyrisle\FlarumZaiBot\Service\Tool\FlagTool;
+use Zephyrisle\FlarumZaiBot\Service\Tool\ImageGenTool;
+use Zephyrisle\FlarumZaiBot\Service\Tool\KaomojiTool;
+use Zephyrisle\FlarumZaiBot\Service\Tool\ProfileTool;
+use Zephyrisle\FlarumZaiBot\Service\Tool\UserEmojiTool;
+use Zephyrisle\FlarumZaiBot\Service\Tool\VideoGenTool;
 use Zephyrisle\FlarumZaiBot\Service\Tool\LearnExpressionTool;
 use Zephyrisle\FlarumZaiBot\Service\Tool\LikeTool;
 use Zephyrisle\FlarumZaiBot\Service\Tool\MemorizeMemoryTool;
@@ -52,6 +60,46 @@ trait BuildsBotTools
 
         if (class_exists(\Flarum\Likes\Event\PostWasLiked::class)) {
             $tools[] = new LikeTool($botUserId);
+        }
+
+        // fof/best-answer: 标记最佳回答
+        if (class_exists(\FoF\BestAnswer\Models\DiscussionBestAnswer::class)) {
+            $tools[] = new BestAnswerTool();
+        }
+
+        // flarum/flags: 举报帖子
+        if (class_exists(\Flarum\Flags\Flag::class)) {
+            $tools[] = new FlagTool($botUserId);
+        }
+
+        // fof/drafts: 草稿管理
+        if (class_exists(\FoF\Drafts\Draft::class)) {
+            $tools[] = new DraftTool($userId);
+        }
+
+        // cloudnest/user-emoji: 用户自定义表情包
+        if (class_exists(\CloudNest\Emoji\Emoji::class)) {
+            $tools[] = new UserEmojiTool($userId);
+        }
+
+        // 个人资料管理：修改机器人自己的头像、背景图、简介
+        try {
+            $tools[] = new ProfileTool($botUserId, resolve(\Flarum\Http\Client::class), $settings->get('flarum-zai-bot.api_url', ''));
+        } catch (\Exception $e) {
+            // 测试环境或依赖缺失时跳过
+        }
+
+        // 颜文字工具：提供日式文本表情符号
+        $tools[] = new KaomojiTool();
+
+        // Agnes AI 图片/视频生成工具
+        if (!empty($settings->get('flarum-zai-bot.agnes_api_key', ''))) {
+            try {
+                $tools[] = new ImageGenTool(resolve(\Flarum\Http\Client::class), $settings);
+                $tools[] = new VideoGenTool(resolve(\Flarum\Http\Client::class), $settings);
+            } catch (\Exception $e) {
+                // 测试环境或依赖缺失时跳过
+            }
         }
 
         if ((bool) $settings->get('flarum-zai-bot.jina_optimization_mode', false)) {

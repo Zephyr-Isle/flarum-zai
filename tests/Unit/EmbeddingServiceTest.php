@@ -92,9 +92,11 @@ class EmbeddingServiceTest extends TestCase
                 'flarum-zai-bot.embedding_api_url' => 'https://api.jina.ai/v1',
                 'flarum-zai-bot.embedding_api_key' => 'sk-jina',
                 'flarum-zai-bot.embedding_model' => 'jina-embeddings-v3',
+                'flarum-zai-bot.last_embedding_key_index' => -1,
                 default => $default,
             };
         });
+        $this->settings->shouldReceive('set')->with('flarum-zai-bot.last_embedding_key_index', '0')->once();
 
         $this->client->shouldReceive('post')
             ->once()
@@ -118,6 +120,7 @@ class EmbeddingServiceTest extends TestCase
             return match ($key) {
                 'flarum-zai-bot.embedding_api_key' => 'sk-jina',
                 'flarum-zai-bot.embedding_model' => 'jina-embeddings-v3',
+                'flarum-zai-bot.last_embedding_key_index' => -1,
                 default => $default,
             };
         });

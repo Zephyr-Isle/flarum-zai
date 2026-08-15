@@ -58,11 +58,36 @@ class GenerateReplyForPost extends AbstractJob
 
         $discussion = $post->discussion;
 
+        // flarum/lock: 已锁定的讨论不再触发回复
+        if (class_exists('\Flarum\Lock\Event\DiscussionWasLocked::class') || property_exists($discussion, 'is_locked')) {
+            if (!empty($discussion->is_locked)) {
+                error_log('[flarum-zai-bot] GenerateReplyForPost: discussion locked, skip. discussion_id=' . $discussion->id);
+                return;
+            }
+        }
+
         $botUsername = $settings->get('flarum-zai-bot.username', 'AIGirl');
         $randomChance = $this->getRandomReplyChance($settings);
         $mergeSeconds = $this->getMergeSeconds($settings);
         $mergeMax = $this->getMergeMax($settings);
         $requireWake = (bool) $settings->get('flarum-zai-bot.wake_merge_require_wake', false);
+
+        // fof/prevent-necrobumping: 检测挖坟（老帖新回复）
+        $isNecroBump = false;
+        if (class_exists('\FoF\PreventNecrobumping\Listeners\CheckPostDate::class')) {
+            try {
+                $lastPostAt = $discussion->last_posted_at;
+                if ($lastPostAt) {
+                    $daysSinceLastPost = $lastPostAt->diffInDays(now());
+                    if ($daysSinceLastPost > 30) {
+                        $isNecroBump = true;
+                        $context['necro_bump'] = true;
+                        $context['necro_days'] = $daysSinceLastPost;
+                    }
+                }
+            } catch (\Exception $e) {
+            }
+        }
 
         $botUser = $this->getBotUser($botUsername);
 
@@ -72,6 +97,12 @@ class GenerateReplyForPost extends AbstractJob
 
         $author = $post->user;
         $userId = $author ? $author->id : null;
+
+        // flarum/suspend: 已封禁用户不触发回复
+        if ($author && $author->is_suspended) {
+            error_log('[flarum-zai-bot] GenerateReplyForPost: user suspended, skip. user_id=' . $userId);
+            return;
+        }
 
         // 查询机器人在该讨论中的最近一次回复（用于防重保险、合并去重与自主决策上下文）
         $lastBotReply = $this->getLastBotReply($discussion->id, $botUser->id);
@@ -272,10 +303,107 @@ class GenerateReplyForPost extends AbstractJob
             'history_images' => $historyImages,
         ];
 
+        // flarum/tags: 注入讨论标签信息
+        if (class_exists('\Flarum\Tags\Tag::class') && method_exists($discussion, 'tags')) {
+            try {
+                $tags = $discussion->tags()->pluck('name')->filter()->values()->all();
+                if (!empty($tags)) {
+                    $context['discussion_tags'] = implode(', ', $tags);
+                }
+            } catch (\Exception $e) {
+            }
+        }
+
+        // fof/byobu: 私有讨论检测与收件人信息
+        if (class_exists('\FoF\Byobu\Listeners\IgnoreApprovals::class')) {
+            try {
+                if (!empty($discussion->isByobu)) {
+                    $context['is_private_discussion'] = true;
+                    $recipients = $discussion->recipientUsers()->pluck('display_name')->filter()->values()->all();
+                    if (!empty($recipients)) {
+                        $context['private_recipients'] = implode(', ', $recipients);
+                    }
+                    $recipientGroups = $discussion->recipientGroups()->pluck('name_singular')->filter()->values()->all();
+                    if (!empty($recipientGroups)) {
+                        $context['private_recipient_groups'] = implode(', ', $recipientGroups);
+                    }
+                }
+            } catch (\Exception $e) {
+            }
+        }
+
+        // fof/upload: 解析帖子中的文件附件信息
+        if (class_exists('\FoF\Upload\File::class')) {
+            try {
+                $fofFiles = \FoF\Upload\File::where('post_id', $post->id)->get();
+                if ($fofFiles->isNotEmpty()) {
+                    $fileLines = [];
+                    foreach ($fofFiles as $file) {
+                        $line = "- {$file->name}";
+                        if ($file->size) {
+                            $line .= "（{$file->formatSize()}）";
+                        }
+                        $fileLines[] = $line;
+                    }
+                    $context['file_attachments'] = implode("\n", $fileLines);
+                }
+            } catch (\Exception $e) {
+            }
+        }
+
+        // fof/polls: 注入投票信息
+        if (class_exists('\FoF\Polls\Poll::class')) {
+            try {
+                $poll = \FoF\Polls\Poll::where('discussion_id', $discussion->id)->first();
+                if ($poll) {
+                    $pollInfo = "投票：{$poll->question}\n";
+                    $options = $poll->options()->get();
+                    foreach ($options as $option) {
+                        $pollInfo .= "- {$option->percentage}% {$option->text}\n";
+                    }
+                    $context['poll_info'] = trim($pollInfo);
+                }
+            } catch (\Exception $e) {
+            }
+        }
+
+        // fof/pages: 注入关联页面内容（如果讨论与页面关联）
+        if (class_exists('\FoF\Pages\Page::class')) {
+            try {
+                // 查找与当前讨论关联的页面（通过 discussion 的 slug 或关系）
+                $page = \FoF\Pages\Page::where('discussion_id', $discussion->id)->first();
+                if ($page && $page->content) {
+                    $pageContent = mb_substr(strip_tags((string) $page->content), 0, 500);
+                    $context['page_context'] = "关联页面「{$page->title}」：\n{$pageContent}";
+                }
+            } catch (\Exception $e) {
+            }
+        }
+
+        // linkrobins/wiki: 注入 Wiki 文章内容（如果讨论标题匹配 Wiki 文章）
+        if (class_exists('\LinkRobins\Wiki\WikiArticle::class')) {
+            try {
+                // 按讨论标题模糊搜索 Wiki 文章
+                $wikiArticle = \LinkRobins\Wiki\WikiArticle::where('title', 'LIKE', '%' . mb_substr($discussion->title, 0, 20) . '%')
+                    ->orWhere('slug', 'LIKE', '%' . mb_substr($discussion->title, 0, 20) . '%')
+                    ->first();
+                if ($wikiArticle && $wikiArticle->content) {
+                    $wikiContent = mb_substr(strip_tags((string) $wikiArticle->content), 0, 500);
+                    $context['wiki_context'] = "相关 Wiki 文章「{$wikiArticle->title}」：\n{$wikiContent}";
+                }
+            } catch (\Exception $e) {
+            }
+        }
+
         if ($author) {
             $context['joined_at'] = $author->joined_at ? $author->joined_at->format('Y-m-d H:i:s') : null;
             $context['post_count'] = $author->posts()->count();
             $context['group_names'] = $author->groups->pluck('name_singular')->implode(', ') ?: null;
+
+            // flarum/nicknames: 优先使用昵称作为显示名
+            if (class_exists('\Flarum\Nicknames\NicknameDriver::class') && !empty($author->nickname)) {
+                $context['display_name'] = $author->nickname;
+            }
 
             if (class_exists(\FoF\UserBio\Event\BioChanged::class) && $author->bio) {
                 $context['bio'] = strip_tags($author->bio);
@@ -291,6 +419,138 @@ class GenerateReplyForPost extends AbstractJob
                     $context['verified_tier'] = $verification->verified_tier;
                     $context['verified_at'] = $verification->verified_at ? $verification->verified_at->format('Y-m-d H:i:s') : null;
                 }
+            }
+
+            // fof/socialprofile: 注入用户社交资料
+            if (class_exists('\FoF\SocialProfile\Listeners\SaveUserPreferences::class') && !empty($author->social_buttons)) {
+                try {
+                    $socialButtons = json_decode($author->social_buttons, true);
+                    if (is_array($socialButtons) && !empty($socialButtons)) {
+                        $socialLines = [];
+                        foreach ($socialButtons as $button) {
+                            $label = $button['label'] ?? ($button['type'] ?? '社交');
+                            $url = $button['url'] ?? '';
+                            if ($url !== '') {
+                                $socialLines[] = "- {$label}: {$url}";
+                            }
+                        }
+                        if (!empty($socialLines)) {
+                            $context['social_profiles'] = implode("\n", $socialLines);
+                        }
+                    }
+                } catch (\Exception $e) {
+                }
+            }
+        }
+
+        // fof/geoip: 注入发帖者地理位置信息
+        if (class_exists('\FoF\GeoIP\Listeners\RetrieveIP::class')) {
+            try {
+                $ipInfo = $post->ip_info()->first();
+                if ($ipInfo) {
+                    $locationParts = [];
+                    if (!empty($ipInfo->country)) {
+                        $locationParts[] = $ipInfo->country;
+                    }
+                    if (!empty($ipInfo->city)) {
+                        $locationParts[] = $ipInfo->city;
+                    }
+                    if (!empty($locationParts)) {
+                        $context['user_location'] = implode('，', $locationParts);
+                    }
+                }
+            } catch (\Exception $e) {
+            }
+        }
+
+        // flarum/sticky: 检测置顶讨论
+        if (class_exists('\Flarum\Sticky\Event\DiscussionWasSticked::class') || property_exists($discussion, 'is_sticky')) {
+            if (!empty($discussion->is_sticky)) {
+                $context['is_sticky'] = true;
+            }
+        }
+
+        // fof/discussion-views: 注入讨论浏览量
+        if (class_exists('\FoF\DiscussionViews\Listeners\SavePostViews::class') || property_exists($discussion, 'comment_count')) {
+            try {
+                $viewCount = $discussion->comment_count ?? 0;
+                if ($viewCount > 100) {
+                    $context['discussion_popularity'] = 'high';
+                } elseif ($viewCount > 50) {
+                    $context['discussion_popularity'] = 'medium';
+                }
+            } catch (\Exception $e) {
+            }
+        }
+
+        // flarum/subscriptions: 检查当前用户订阅状态
+        if (class_exists('\Flarum\Subscriptions\UserState') && $userId) {
+            try {
+                $subscription = \Flarum\Subscriptions\UserState::where('discussion_id', $discussion->id)
+                    ->where('user_id', $userId)
+                    ->first();
+                if ($subscription) {
+                    $context['user_subscription'] = $subscription->last_read_at ? 'following' : 'lurking';
+                }
+            } catch (\Exception $e) {
+            }
+        }
+
+        // fof/follow-tags: 检查用户关注的标签
+        if (class_exists('\FoF\FollowTags\Models\UserTagState') && $userId) {
+            try {
+                $followedTags = \FoF\FollowTags\Models\UserTagState::where('user_id', $userId)
+                    ->where('is_followed', true)
+                    ->with('tag')
+                    ->get()
+                    ->pluck('tag.name')
+                    ->filter()
+                    ->values()
+                    ->all();
+                if (!empty($followedTags)) {
+                    $context['followed_tags'] = implode(', ', $followedTags);
+                }
+            } catch (\Exception $e) {
+            }
+        }
+
+        // linkrobins/auto-verify: 自动验证用户（机器人绕过）
+        if (class_exists('\LinkRobins\AutoVerify\Listeners\AutoVerifyUser::class') && $author) {
+            try {
+                if (!$author->is_verified && $author->email && $author->joined_at) {
+                    $daysSinceJoin = $author->joined_at->diffInDays(now());
+                    if ($daysSinceJoin < 7) {
+                        $context['new_user'] = true;
+                    }
+                }
+            } catch (\Exception $e) {
+            }
+        }
+
+        // tryhackx/flarum-advanced-pages: 注入高级页面内容
+        if (class_exists('\TryHackX\AdvancedPages\Page::class')) {
+            try {
+                $advancedPage = \TryHackX\AdvancedPages\Page::where('discussion_id', $discussion->id)->first();
+                if ($advancedPage && $advancedPage->content) {
+                    $pageContent = mb_substr(strip_tags((string) $advancedPage->content), 0, 500);
+                    $context['advanced_page_context'] = "高级页面「{$advancedPage->title}」：\n{$pageContent}";
+                }
+            } catch (\Exception $e) {
+            }
+        }
+
+        // shebaoting/flarum-repost: 检测转发内容
+        if (class_exists('\Shebaoting\Repost\Post\RepostedPost::class')) {
+            try {
+                $repostedPost = \Shebaoting\Repost\Post\RepostedPost::where('post_id', $post->id)->first();
+                if ($repostedPost && $repostedPost->original_post_id) {
+                    $originalPost = \Flarum\Post\Post::find($repostedPost->original_post_id);
+                    if ($originalPost) {
+                        $originalContent = mb_substr(strip_tags((string) $originalPost->content), 0, 300);
+                        $context['repost_context'] = "这是一条转发内容，原文：{$originalContent}";
+                    }
+                }
+            } catch (\Exception $e) {
             }
         }
 
@@ -408,6 +668,22 @@ class GenerateReplyForPost extends AbstractJob
         $botPost->created_at = Carbon::now();
         $botPost->setContentAttribute($reply, $botUser);
         $botPost->save();
+
+        // flarum/approval: 机器人帖子自动通过审批，避免等待人工审核
+        if (class_exists('\Flarum\Approval\Listener\UnapproveNewContent::class')) {
+            if (!$botPost->is_approved) {
+                $botPost->is_approved = true;
+                $botPost->save();
+            }
+        }
+
+        // flarum/akismet: 机器人帖子标记为非垃圾信息
+        if (class_exists('\Flarum\Akismet\Listener\ValidatePost::class')) {
+            if (!empty($botPost->is_spam)) {
+                $botPost->is_spam = false;
+                $botPost->save();
+            }
+        }
 
         // 帖子已持久化，任何同步监听器（如 realtime 推送）的异常/错误都不应让任务失败重试，
         // 否则重试会重新生成回复并产生重复帖子。

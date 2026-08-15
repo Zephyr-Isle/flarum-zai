@@ -34,6 +34,34 @@ return [
                 ->listen(\Flarum\Messages\DialogMessage\Event\Created::class, ReplyToMessage::class),
         ]),
 
+    // fof/merge-discussions: 记录讨论合并事件到上下文
+    (new Extend\Conditional())
+        ->whenExtensionEnabled('fof-merge-discussions', fn () => [
+            (new Extend\Event())
+                ->listen(\FoF\MergeDiscussions\Events\DiscussionWasMerged::class, \Zephyrisle\FlarumZaiBot\Listener\RecordContextEvent::class),
+        ]),
+
+    // fof/move-posts: 记录帖子移动事件到上下文
+    (new Extend\Conditional())
+        ->whenExtensionEnabled('fof-move-posts', fn () => [
+            (new Extend\Event())
+                ->listen(\FoF\MovePosts\Event\PostsMoved::class, \Zephyrisle\FlarumZaiBot\Listener\RecordContextEvent::class),
+        ]),
+
+    // fof/split: 记录讨论拆分事件到上下文
+    (new Extend\Conditional())
+        ->whenExtensionEnabled('fof-split', fn () => [
+            (new Extend\Event())
+                ->listen(\FoF\Split\Events\DiscussionWasSplit::class, \Zephyrisle\FlarumZaiBot\Listener\RecordContextEvent::class),
+        ]),
+
+    // fof/moderator-warnings: 记录警告事件到上下文
+    (new Extend\Conditional())
+        ->whenExtensionEnabled('fof-moderator-warnings', fn () => [
+            (new Extend\Event())
+                ->listen(\FoF\ModeratorWarnings\Events\WarningIssued::class, \Zephyrisle\FlarumZaiBot\Listener\RecordContextEvent::class),
+        ]),
+
     (new Extend\Settings())
         ->default('flarum-zai-bot.bot_display_name', 'Yuki')
         ->default('flarum-zai-bot.timezone', 'Asia/Shanghai')
@@ -74,7 +102,9 @@ return [
         ->default('flarum-zai-bot.affinity_blacklist_threshold', 0)
         // 关系网与表达学习开关
         ->default('flarum-zai-bot.relation_network_enabled', true)
-        ->default('flarum-zai-bot.expression_learning_enabled', true),
+        ->default('flarum-zai-bot.expression_learning_enabled', true)
+        // Agnes AI 图片/视频生成 API Key
+        ->default('flarum-zai-bot.agnes_api_key', ''),
 
     (new Extend\Model(\Zephyrisle\FlarumZaiBot\Model\ContextEvent::class)),
 
@@ -85,6 +115,13 @@ return [
     (new Extend\Model(\Zephyrisle\FlarumZaiBot\Model\BotRelation::class)),
 
     (new Extend\Model(\Zephyrisle\FlarumZaiBot\Model\BotExpression::class)),
+
+    // flarum/gdpr: 将机器人数据纳入用户数据导出
+    (new Extend\Conditional())
+        ->whenExtensionEnabled('flarum-gdpr', fn () => [
+            (new \Flarum\Gdpr\Extend\UserData())
+                ->addType(\Zephyrisle\FlarumZaiBot\Service\GdprDataProvider::class),
+        ]),
 
     (new Extend\Locales(__DIR__ . '/locale')),
 
@@ -100,5 +137,9 @@ return [
         ->post('/zai-bot/test-api', 'zai-bot.test-api', \Zephyrisle\FlarumZaiBot\Api\Controller\TestApiController::class)
         ->get('/zai-bot/jina-proxy', 'zai-bot.jina-proxy', \Zephyrisle\FlarumZaiBot\Api\Controller\JinaProxyController::class)
         // 免鉴权图片代理：供 AI 模型视觉 API 拉取 fof/upload 的私有图片（见 ImageExtractor / VisionImageController）
-        ->get('/zai-bot/vision-image/{uuid}', 'zai-bot.vision-image', \Zephyrisle\FlarumZaiBot\Api\Controller\VisionImageController::class),
+        ->get('/zai-bot/vision-image/{uuid}', 'zai-bot.vision-image', \Zephyrisle\FlarumZaiBot\Api\Controller\VisionImageController::class)
+        // Agnes AI API 代理：图片/视频生成（需管理员权限）
+        ->any('/zai-bot/agnes/{path:.+}', 'zai-bot.agnes-proxy', \Zephyrisle\FlarumZaiBot\Api\Controller\AgnesProxyController::class)
+        // Jina API Key 测试
+        ->post('/zai-bot/jina/test-key', 'zai-bot.jina.test-key', \Zephyrisle\FlarumZaiBot\Api\Controller\TestJinaKeyController::class),
 ];

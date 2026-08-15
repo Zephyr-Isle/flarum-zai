@@ -58,6 +58,13 @@ class GenerateReplyForMessage extends AbstractJob
         }
 
         $author = $message->user;
+
+        // flarum/suspend: 已封禁用户不触发回复
+        if ($author && $author->is_suspended) {
+            error_log('[flarum-zai-bot] GenerateReplyForMessage: user suspended, skip. user_id=' . $author->id);
+            return;
+        }
+
         $isVerified = false;
         if ($author && class_exists(\Ramon\Verified\TierResolver::class)) {
             $resolver = resolve(\Ramon\Verified\TierResolver::class);
@@ -151,6 +158,11 @@ class GenerateReplyForMessage extends AbstractJob
             $context['post_count'] = $author->posts()->count();
             $context['group_names'] = $author->groups->pluck('name_singular')->implode(', ') ?: null;
 
+            // flarum/nicknames: 优先使用昵称作为显示名
+            if (class_exists('\Flarum\Nicknames\NicknameDriver::class') && !empty($author->nickname)) {
+                $context['display_name'] = $author->nickname;
+            }
+
             if (class_exists(\FoF\UserBio\Event\BioChanged::class) && $author->bio) {
                 $context['bio'] = strip_tags($author->bio);
             }
@@ -164,6 +176,27 @@ class GenerateReplyForMessage extends AbstractJob
                 if ($verification) {
                     $context['verified_tier'] = $verification->verified_tier;
                     $context['verified_at'] = $verification->verified_at ? $verification->verified_at->format('Y-m-d H:i:s') : null;
+                }
+            }
+
+            // fof/socialprofile: 注入用户社交资料
+            if (class_exists('\FoF\SocialProfile\Listeners\SaveUserPreferences::class') && !empty($author->social_buttons)) {
+                try {
+                    $socialButtons = json_decode($author->social_buttons, true);
+                    if (is_array($socialButtons) && !empty($socialButtons)) {
+                        $socialLines = [];
+                        foreach ($socialButtons as $button) {
+                            $label = $button['label'] ?? ($button['type'] ?? '社交');
+                            $url = $button['url'] ?? '';
+                            if ($url !== '') {
+                                $socialLines[] = "- {$label}: {$url}";
+                            }
+                        }
+                        if (!empty($socialLines)) {
+                            $context['social_profiles'] = implode("\n", $socialLines);
+                        }
+                    }
+                } catch (\Exception $e) {
                 }
             }
         }
