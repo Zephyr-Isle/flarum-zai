@@ -135,9 +135,9 @@ return [
         ->get('/zai-bot/expressions', 'zai-bot.expressions', \Zephyrisle\FlarumZaiBot\Api\Controller\ListExpressionsController::class)
         ->patch('/zai-bot/expressions/{id}', 'zai-bot.expressions.update', \Zephyrisle\FlarumZaiBot\Api\Controller\UpdateExpressionController::class)
         ->post('/zai-bot/test-api', 'zai-bot.test-api', \Zephyrisle\FlarumZaiBot\Api\Controller\TestApiController::class)
+        ->post('/zai-bot/test-agnes', 'zai-bot.test-agnes', \Zephyrisle\FlarumZaiBot\Api\Controller\TestAgnesController::class)
         ->get('/zai-bot/jina-proxy', 'zai-bot.jina-proxy', \Zephyrisle\FlarumZaiBot\Api\Controller\JinaProxyController::class)
         // 免鉴权图片代理：供 AI 模型视觉 API 拉取 fof/upload 的私有图片（见 ImageExtractor / VisionImageController）
         ->get('/zai-bot/vision-image/{uuid}', 'zai-bot.vision-image', \Zephyrisle\FlarumZaiBot\Api\Controller\VisionImageController::class)
-        // Agnes AI API 代理：图片/视频生成（需管理员权限）
-        ->post('/zai-bot/agnes/{path:.+}', 'zai-bot.agnes-proxy', \Zephyrisle\FlarumZaiBot\Api\Controller\AgnesProxyController::class),
+
 ];

@@ -293,6 +293,13 @@ export default [
             type: 'boolean',
             default: true,
         }))
+        // Agnes AI 图片/视频生成
+        .setting(() => ({
+            setting: 'flarum-zai-bot.agnes_api_key',
+            label: t('agnes_api_key_label'),
+            help: t('agnes_api_key_help'),
+            type: 'password',
+        }))
         // Embedding 独立配置（不同步 LLM 供应商），默认完全适配 Jina AI
         .setting(() => ({
             setting: 'flarum-zai-bot.embedding_api_url',

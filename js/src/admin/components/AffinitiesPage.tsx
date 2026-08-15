@@ -21,6 +21,8 @@ export default class AffinitiesPage extends ExtensionPage {
     error: string | null = null;
     testResults: any = {};
     testing: string | null = null;
+    agnesTesting = false;
+    agnesTestResult: any = null;
 
     q = '';
 
@@ -58,6 +60,28 @@ export default class AffinitiesPage extends ExtensionPage {
             .catch((e: any) => {
                 this.testResults = { requestError: e.statusText || e.message || 'Request failed' };
                 this.testing = null;
+                m.redraw();
+            });
+    }
+
+    testAgnes() {
+        if (this.agnesTesting) return;
+        this.agnesTesting = true;
+        this.agnesTestResult = null;
+        m.redraw();
+
+        app.request({
+            method: 'POST',
+            url: app.forum.attribute('apiUrl') + '/zai-bot/test-agnes',
+        })
+            .then((data: any) => {
+                this.agnesTestResult = data;
+                this.agnesTesting = false;
+                m.redraw();
+            })
+            .catch((e: any) => {
+                this.agnesTestResult = { success: false, error: e.statusText || e.message || 'Request failed' };
+                this.agnesTesting = false;
                 m.redraw();
             });
     }
@@ -198,10 +222,29 @@ export default class AffinitiesPage extends ExtensionPage {
             this.testResults.requestError ? m('div', { className: 'ZaiBot-test-row ZaiBot-test-result--fail' }, this.testResults.requestError) : null,
         ]);
 
+        const agnesTestSection = m('div', { className: 'ZaiBot-test' }, [
+            m('h3', { className: 'ZaiBot-test-title' }, this.t('agnes_test.title')),
+            m('p', { className: 'ZaiBot-test-desc' }, this.t('agnes_test.description')),
+            m('div', { className: 'ZaiBot-test-actions' }, [
+                m('button', {
+                    className: 'Button' + (this.agnesTesting ? ' Button--loading' : ''),
+                    onclick: () => this.testAgnes(),
+                    disabled: this.agnesTesting,
+                }, this.t('agnes_test.test_button')),
+                this.agnesTesting ? m('span', { className: 'ZaiBot-test-spinner' }, this.t('api_test.testing')) : null,
+            ]),
+            this.agnesTestResult ? m('div', { className: 'ZaiBot-test-row' }, [
+                this.agnesTestResult.success
+                    ? m('div', { className: 'ZaiBot-test-result ZaiBot-test-result--ok' }, this.t('agnes_test.success', { model: this.agnesTestResult.model }))
+                    : m('div', { className: 'ZaiBot-test-result ZaiBot-test-result--fail' }, this.t('agnes_test.failed', { error: this.agnesTestResult.error })),
+            ]) : null,
+        ]);
+
         return [
             m(ProvidersSettings, { stream: this.setting('flarum-zai-bot.providers') }),
             super.content(),
             testSection,
+            agnesTestSection,
         ];
     }
 

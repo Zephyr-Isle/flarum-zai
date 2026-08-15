@@ -12,7 +12,7 @@ use Flarum\Settings\SettingsRepositoryInterface;
  */
 class ImageGenTool implements ToolInterface
 {
-    private const AGNES_API_BASE = 'https://apihub.agnes-ai.com';
+    private const AGNES_API_BASE = 'https://apihub.agnes-ai.cn/v1';
 
     public function __construct(
         protected Client $client,
@@ -91,7 +91,7 @@ class ImageGenTool implements ToolInterface
             }
 
             $response = $this->client->post(
-                self::AGNES_API_BASE . '/v1/images/generations',
+                self::AGNES_API_BASE . '/images/generations',
                 [
                     'headers' => [
                         'Authorization' => 'Bearer ' . $apiKey,

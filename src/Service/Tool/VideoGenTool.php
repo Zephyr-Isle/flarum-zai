@@ -13,7 +13,7 @@ use Flarum\Settings\SettingsRepositoryInterface;
  */
 class VideoGenTool implements ToolInterface
 {
-    private const AGNES_API_BASE = 'https://apihub.agnes-ai.com';
+    private const AGNES_API_BASE = 'https://apihub.agnes-ai.cn/v1';
 
     public function __construct(
         protected Client $client,
@@ -121,7 +121,7 @@ class VideoGenTool implements ToolInterface
             }
 
             $response = $this->client->post(
-                self::AGNES_API_BASE . '/v1/videos',
+                self::AGNES_API_BASE . '/videos',
                 [
                     'headers' => [
                         'Authorization' => 'Bearer ' . $apiKey,

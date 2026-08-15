@@ -105,6 +105,14 @@ zephyrisle-flarum-zai-bot:
       relation_network_enabled_help: 'AI 可通过 update_relation_network 工具维护与用户的长期稳定关系信息，并在每次回复时注入关系网摘要。关闭后不注入也不提供工具。'
       expression_learning_enabled_label: '启用表达学习（待审核/已启用/已禁用）'
       expression_learning_enabled_help: 'AI 可通过 learn_expression 工具从对话中归纳"怎么说"（短表达/句法/情境风格），新规则一律进入待审核，管理员通过后才进入回复。关闭后不注入也不提供工具。'
+      agnes_api_key_label: 'Agnes AI API 密钥'
+      agnes_api_key_help: '用于图片/视频生成。AI 调用 generate_image / generate_video 工具时使用此密钥。留空则禁用生成功能。'
+    agnes_test:
+      title: Agnes AI 测试
+      description: 测试 Agnes AI API Key 连通性，验证密钥是否有效。
+      test_button: 测试 Agnes Key
+      success: '✅ 验证成功（模型：{model}）'
+      failed: '❌ 验证失败：{error}'
       pgvector_host_label: 'PostgreSQL 主机（用于 pgvector 记忆，留空禁用）'
       pgvector_host_help: '需要 pgvector 扩展。向量维度须与模型一致（jina-embeddings-v3 为 1024）。'
       pgvector_port_label: PostgreSQL 端口
