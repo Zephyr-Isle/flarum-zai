@@ -313,7 +313,8 @@ class MemoryService
         $conditions = [];
         $params = [$userId];
         foreach ($tokens as $token) {
-            $conditions[] = 'content LIKE ?';
+            // 与 listMemories/文档保持一致用 ILIKE（本服务固定连接 PostgreSQL）
+            $conditions[] = 'content ILIKE ?';
             $params[] = '%' . $token . '%';
         }
         $params[] = $limit;
@@ -544,7 +545,9 @@ class MemoryService
         try {
             $dsn = "pgsql:host={$host};port={$port};dbname={$db}";
             $this->pdo = new \PDO($dsn, $user, $pass, [
-                \PDO::ATTR_ERRMODE => \PDO::ERRMODE_SILENT,
+                // 必须用 EXCEPTION 模式：SILENT 模式下查询失败不抛异常，
+                // 本类所有的 try/catch 错误处理会成为死代码，写入失败也会被误报成功。
+                \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
                 \PDO::ATTR_DEFAULT_FETCH_MODE => \PDO::FETCH_ASSOC,
             ]);
             return $this->pdo;
