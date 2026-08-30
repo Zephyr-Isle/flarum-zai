@@ -62,9 +62,9 @@ trait BuildsBotTools
             $tools[] = new LikeTool($botUserId);
         }
 
-        // fof/best-answer: 标记最佳回答
-        if (class_exists(\FoF\BestAnswer\Models\DiscussionBestAnswer::class)) {
-            $tools[] = new BestAnswerTool();
+        // fof/best-answer: 标记最佳回答（该扩展没有 Models 目录，用其事件类探测是否安装）
+        if (class_exists(\FoF\BestAnswer\Events\BestAnswerSet::class)) {
+            $tools[] = new BestAnswerTool($botUserId);
         }
 
         // flarum/flags: 举报帖子
@@ -83,8 +83,14 @@ trait BuildsBotTools
         }
 
         // 个人资料管理：修改机器人自己的头像、背景图、简介
+        // 注意：Flarum 2.x 没有 Flarum\Http\Client，工具内部直接用 GuzzleHttp\Client；
+        // 上传地址用论坛自身的 API 根地址（UrlGenerator），不要用 LLM 的 api_url。
         try {
-            $tools[] = new ProfileTool($botUserId, resolve(\Flarum\Http\Client::class), $settings->get('flarum-zai-bot.api_url', ''));
+            $tools[] = new ProfileTool(
+                $botUserId,
+                new \GuzzleHttp\Client(),
+                resolve(\Flarum\Http\UrlGenerator::class)->to('api')->base()
+            );
         } catch (\Exception $e) {
             // 测试环境或依赖缺失时跳过
         }
@@ -95,15 +101,16 @@ trait BuildsBotTools
         // Agnes AI 图片/视频生成工具
         if (!empty($settings->get('flarum-zai-bot.agnes_api_key', ''))) {
             try {
-                $tools[] = new ImageGenTool(resolve(\Flarum\Http\Client::class), $settings);
-                $tools[] = new VideoGenTool(resolve(\Flarum\Http\Client::class), $settings);
+                $tools[] = new ImageGenTool(new \GuzzleHttp\Client(), $settings);
+                $tools[] = new VideoGenTool(new \GuzzleHttp\Client(), $settings);
             } catch (\Exception $e) {
                 // 测试环境或依赖缺失时跳过
             }
         }
 
         if ((bool) $settings->get('flarum-zai-bot.jina_optimization_mode', false)) {
-            $tools[] = resolve(WebSearchTool::class);
+            // 传入机器人用户 ID：内建代理路由仅管理员/机器人可用，工具调用时需携带机器人令牌
+            $tools[] = new WebSearchTool($settings, resolve(\GuzzleHttp\Client::class), resolve(\Flarum\Http\UrlGenerator::class), $botUserId);
         }
 
         // Agent 原生工具：长期记忆的主动召回与写入（记忆系统可用时注册，避免白耗 token）

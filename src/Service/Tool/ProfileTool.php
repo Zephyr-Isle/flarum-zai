@@ -2,13 +2,19 @@
 
 namespace Zephyrisle\FlarumZaiBot\Service\Tool;
 
-use Flarum\Http\Client;
+use Flarum\Http\AccessToken;
+use Flarum\Http\SessionAccessToken;
 use Flarum\User\User;
+use GuzzleHttp\Client;
 
 /**
  * 个人资料管理工具：修改机器人自己的头像、背景图和简介。
  *
  * 所有操作仅限修改机器人自己的资料，不允许修改其他用户。
+ *
+ * $apiUrl 为论坛自身的 API 根地址（如 https://forum.example/api），
+ * 由 BuildsBotTools 通过 UrlGenerator 传入；文件上传需要机器人用户的
+ * Access Token（每次上传临时生成、用后即删）。
  */
 class ProfileTool implements ToolInterface
 {
@@ -217,15 +223,22 @@ class ProfileTool implements ToolInterface
 
     protected function uploadToFlarum(string $content, string $filename, string $type): ?string
     {
+        $token = null;
+        $tempFile = null;
+
         try {
             $tempFile = tempnam(sys_get_temp_dir(), 'zai_bot_');
             file_put_contents($tempFile, $content);
+
+            // 临时生成机器人用户的 Access Token（用后即删，避免在数据库中积累凭据）。
+            // 注意 AccessToken 基类禁止直接 generate()，必须使用子类。
+            $token = SessionAccessToken::generate($this->botUserId);
 
             $response = $this->client->post(
                 rtrim($this->apiUrl, '/') . '/fof/upload',
                 [
                     'headers' => [
-                        'Authorization' => 'Token ' . $this->getBotToken(),
+                        'Authorization' => 'Token ' . $token->token,
                     ],
                     'multipart' => [
                         [
@@ -237,8 +250,6 @@ class ProfileTool implements ToolInterface
                 ]
             );
 
-            @unlink($tempFile);
-
             $body = json_decode((string) $response->getBody(), true);
             if (!empty($body['data'][0]['attributes']['url'])) {
                 return $body['data'][0]['attributes']['url'];
@@ -248,6 +259,16 @@ class ProfileTool implements ToolInterface
         } catch (\Exception $e) {
             error_log('[flarum-zai-bot] uploadToFlarum failed: ' . $e->getMessage());
             return null;
+        } finally {
+            if ($token) {
+                try {
+                    $token->delete();
+                } catch (\Exception $e) {
+                }
+            }
+            if ($tempFile && is_file($tempFile)) {
+                @unlink($tempFile);
+            }
         }
     }
 
@@ -263,13 +284,5 @@ class ProfileTool implements ToolInterface
         }
 
         $user->save();
-    }
-
-    protected function getBotToken(): string
-    {
-        // 使用机器人的 access token 进行 API 调用
-        // 这里需要从配置中获取或生成
-        return resolve(\Flarum\Settings\SettingsRepositoryInterface::class)
-            ->get('flarum-zai-bot.api_token', '');
     }
 }

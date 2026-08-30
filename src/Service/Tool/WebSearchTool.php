@@ -2,16 +2,19 @@
 
 namespace Zephyrisle\FlarumZaiBot\Service\Tool;
 
+use Flarum\Http\SessionAccessToken;
 use Flarum\Http\UrlGenerator;
 use Flarum\Settings\SettingsRepositoryInterface;
 use GuzzleHttp\Client;
+use Flarum\User\User;
 
 class WebSearchTool implements ToolInterface
 {
     public function __construct(
         protected SettingsRepositoryInterface $settings,
         protected Client $client,
-        protected UrlGenerator $url
+        protected UrlGenerator $url,
+        protected ?int $botUserId = null
     ) {}
 
     public function getName(): string
@@ -104,7 +107,7 @@ class WebSearchTool implements ToolInterface
         if ($proxy) {
             return rtrim($proxy, '/');
         }
-        if ((bool) $this->settings->get('flarum-zai-bot.jina_use_builtin_proxy', false)) {
+        if ($this->usingBuiltinProxy()) {
             return $this->url->to('api')->base() . '/zai-bot/jina-proxy?action=search&q=';
         }
         return 'https://s.jinaai.cn';
@@ -116,22 +119,56 @@ class WebSearchTool implements ToolInterface
         if ($proxy) {
             return rtrim($proxy, '/');
         }
-        if ((bool) $this->settings->get('flarum-zai-bot.jina_use_builtin_proxy', false)) {
+        if ($this->usingBuiltinProxy()) {
             return $this->url->to('api')->base() . '/zai-bot/jina-proxy?action=read&url=';
         }
         return 'https://r.jinaai.cn';
     }
 
+    protected function usingBuiltinProxy(): bool
+    {
+        return (bool) $this->settings->get('flarum-zai-bot.jina_use_builtin_proxy', false);
+    }
+
+    /**
+     * 内建代理路由仅管理员/机器人可用，而本工具运行在队列进程中（无登录态）。
+     * 走内建代理时临时生成机器人用户的 Access Token（请求结束后删除），
+     * 否则请求会以游客身份被 403 拒绝。使用自定义代理或直连时不需要。
+     *
+     * @return array{0: string[], 1: ?SessionAccessToken} [额外请求头, 临时令牌]
+     */
+    protected function builtinProxyAuth(): array
+    {
+        if (!$this->usingBuiltinProxy() || !$this->botUserId) {
+            return [[], null];
+        }
+
+        try {
+            if (!User::find($this->botUserId)) {
+                return [[], null];
+            }
+
+            $token = SessionAccessToken::generate($this->botUserId);
+
+            return [['Authorization' => 'Token ' . $token->token], $token];
+        } catch (\Exception $e) {
+            error_log('[flarum-zai-bot] WebSearchTool: failed to generate bot token: ' . $e->getMessage());
+            return [[], null];
+        }
+    }
+
     protected function searchWeb(string $query, int $maxResults): string
     {
+        [$extraHeaders, $tempToken] = $this->builtinProxyAuth();
+
         try {
             $baseUrl = $this->getSearchBaseUrl();
             $url = str_contains($baseUrl, '?') ? $baseUrl . urlencode($query) : $baseUrl . '/' . urlencode($query);
 
             $response = $this->client->get($url, [
-                'headers' => [
+                'headers' => array_merge([
                     'Accept' => 'application/json',
-                ],
+                ], $extraHeaders),
                 'timeout' => 15,
             ]);
 
@@ -159,21 +196,25 @@ class WebSearchTool implements ToolInterface
             return trim($output);
         } catch (\Exception $e) {
             return "搜索失败：{$e->getMessage()}";
+        } finally {
+            $this->deleteTempToken($tempToken);
         }
     }
 
     protected function readUrl(string $url): string
     {
+        [$extraHeaders, $tempToken] = $this->builtinProxyAuth();
+
         try {
             $baseUrl = $this->getReaderBaseUrl();
             // 使用内建代理时 URL 作为 query 参数传递，必须编码（否则 & 等字符会破坏参数）
             $targetUrl = str_contains($baseUrl, '?') ? $baseUrl . rawurlencode($url) : $baseUrl . '/' . $url;
 
             $response = $this->client->get($targetUrl, [
-                'headers' => [
+                'headers' => array_merge([
                     'Accept' => 'application/json',
                     'X-Return-Format' => 'markdown',
-                ],
+                ], $extraHeaders),
                 'timeout' => 20,
             ]);
 
@@ -190,6 +231,20 @@ class WebSearchTool implements ToolInterface
             return "📄 {$url} 的内容：\n\n{$content}";
         } catch (\Exception $e) {
             return "读取 URL 失败：{$e->getMessage()}";
+        } finally {
+            $this->deleteTempToken($tempToken);
+        }
+    }
+
+    protected function deleteTempToken(?SessionAccessToken $token): void
+    {
+        if (!$token) {
+            return;
+        }
+
+        try {
+            $token->delete();
+        } catch (\Exception $e) {
         }
     }
 }

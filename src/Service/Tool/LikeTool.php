@@ -75,13 +75,11 @@ class LikeTool implements ToolInterface
     protected function queryLikes(Post $post): string
     {
         $author = $post->user ? $post->user->display_name : '未知';
+        $likeCount = $post->likes()->count();
 
         $output = "帖子ID：{$post->id}\n";
         $output .= "作者：{$author}\n";
-
-        if ($post->likes_count !== null) {
-            $output .= "点赞数：{$post->likes_count}\n";
-        }
+        $output .= "点赞数：{$likeCount}\n";
 
         $likes = $post->likes()->with('groups')->get();
 
@@ -103,30 +101,48 @@ class LikeTool implements ToolInterface
             return '未安装 flarum/likes 扩展。';
         }
 
+        $botUser = \Flarum\User\User::find($this->botUserId);
+        if (!$botUser) {
+            return '机器人用户不存在。';
+        }
+
+        try {
+            $botUser->assertCan('like', $post);
+        } catch (\Exception $e) {
+            return '机器人没有点赞该帖子的权限。';
+        }
+
         $alreadyLiked = $post->likes()->where('user_id', $this->botUserId)->exists();
 
         if ($alreadyLiked) {
             return "已对该帖子点赞，无需重复操作。";
         }
 
+        // flarum/likes 只维护 post_likes 透视表，posts 表没有 likes_count 列，
+        // 点赞数由 API 序列化时实时计算，这里不写回帖子模型。
         $post->likes()->attach($this->botUserId);
 
-        $post->likes_count = $post->likes()->count();
-        $post->save();
-
         $events = resolve(Dispatcher::class);
-        $botUser = \Flarum\User\User::find($this->botUserId);
-        if ($botUser) {
-            $events->dispatch(new PostWasLiked($post, $botUser));
-        }
+        $events->dispatch(new PostWasLiked($post, $botUser));
 
-        return "点赞成功！帖子「{$post->id}」现在有 {$post->likes_count} 个赞。";
+        return "点赞成功！帖子「{$post->id}」现在有 {$post->likes()->count()} 个赞。";
     }
 
     protected function performUnlike(Post $post): string
     {
         if (!class_exists(PostWasUnliked::class)) {
             return '未安装 flarum/likes 扩展。';
+        }
+
+        $botUser = \Flarum\User\User::find($this->botUserId);
+        if (!$botUser) {
+            return '机器人用户不存在。';
+        }
+
+        try {
+            $botUser->assertCan('like', $post);
+        } catch (\Exception $e) {
+            return '机器人没有操作该帖子点赞的权限。';
         }
 
         $alreadyLiked = $post->likes()->where('user_id', $this->botUserId)->exists();
@@ -137,15 +153,9 @@ class LikeTool implements ToolInterface
 
         $post->likes()->detach($this->botUserId);
 
-        $post->likes_count = $post->likes()->count();
-        $post->save();
-
         $events = resolve(Dispatcher::class);
-        $botUser = \Flarum\User\User::find($this->botUserId);
-        if ($botUser) {
-            $events->dispatch(new PostWasUnliked($post, $botUser));
-        }
+        $events->dispatch(new PostWasUnliked($post, $botUser));
 
-        return "已取消点赞。帖子「{$post->id}」现在有 {$post->likes_count} 个赞。";
+        return "已取消点赞。帖子「{$post->id}」现在有 {$post->likes()->count()} 个赞。";
     }
 }

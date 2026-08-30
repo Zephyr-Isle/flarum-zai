@@ -9,6 +9,10 @@ use Flarum\Post\Post;
  */
 class BestAnswerTool implements ToolInterface
 {
+    public function __construct(
+        protected ?int $botUserId = null
+    ) {}
+
     public function getName(): string
     {
         return 'best_answer';
@@ -44,7 +48,8 @@ class BestAnswerTool implements ToolInterface
 
     public function execute(array $args): string
     {
-        if (!class_exists(\FoF\BestAnswer\Models\DiscussionBestAnswer::class)) {
+        // fof/best-answer 没有 Models 目录，用其事件类探测是否安装
+        if (!class_exists(\FoF\BestAnswer\Events\BestAnswerSet::class)) {
             return '未安装 fof/best-answer 扩展。';
         }
 
@@ -106,6 +111,17 @@ class BestAnswerTool implements ToolInterface
             return "帖子 {$postId} 不属于讨论 {$discussion->id}。";
         }
 
+        // fof/best-answer 仅允许楼主本人或持有 selectBestAnswer 权限的用户设置最佳回答，
+        // 机器人（普通成员组）需要管理员显式授权后才能执行。
+        $botUser = \Flarum\User\User::find($this->botUserId ?? null);
+        if ($botUser) {
+            try {
+                $botUser->assertCan('selectBestAnswer', $discussion);
+            } catch (\Exception $e) {
+                return '机器人没有设置最佳回答的权限（需要 selectBestAnswer 权限）。';
+            }
+        }
+
         $discussion->best_answer_post_id = $postId;
         $discussion->save();
 
@@ -117,6 +133,15 @@ class BestAnswerTool implements ToolInterface
     {
         if (!$discussion->best_answer_post_id) {
             return "讨论「{$discussion->title}」暂无最佳回答，无需取消。";
+        }
+
+        $botUser = \Flarum\User\User::find($this->botUserId ?? null);
+        if ($botUser) {
+            try {
+                $botUser->assertCan('selectBestAnswer', $discussion);
+            } catch (\Exception $e) {
+                return '机器人没有取消最佳回答的权限（需要 selectBestAnswer 权限）。';
+            }
         }
 
         $discussion->best_answer_post_id = null;

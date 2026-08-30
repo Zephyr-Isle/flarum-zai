@@ -3,6 +3,8 @@
 namespace Zephyrisle\FlarumZaiBot\Api\Controller;
 
 use Flarum\Http\RequestUtil;
+use Flarum\Settings\SettingsRepositoryInterface;
+use Flarum\User\User;
 use GuzzleHttp\Client;
 use Laminas\Diactoros\Response\JsonResponse;
 use Psr\Http\Message\ResponseInterface;
@@ -12,13 +14,22 @@ use Psr\Http\Server\RequestHandlerInterface;
 class JinaProxyController implements RequestHandlerInterface
 {
     public function __construct(
-        protected Client $client
+        protected Client $client,
+        protected SettingsRepositoryInterface $settings
     ) {}
 
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
         $actor = RequestUtil::getActor($request);
-        $actor->assertAdmin();
+
+        // 允许管理员，或配置的机器人用户本身：
+        // WebSearchTool 在队列进程里走内建代理时，携带的是机器人用户的临时令牌。
+        // 其余身份（含游客）一律要求管理员权限。
+        $bot = User::where('username', (string) $this->settings->get('flarum-zai-bot.username', 'AIGirl'))->first();
+
+        if (!$actor->isAdmin() && (!$bot || (int) $actor->id !== (int) $bot->id)) {
+            $actor->assertAdmin();
+        }
 
         $action = $request->getQueryParams()['action'] ?? '';
         $query = $request->getQueryParams()['q'] ?? '';

@@ -2,8 +2,8 @@
 
 namespace Zephyrisle\FlarumZaiBot\Service\Tool;
 
-use Flarum\Http\Client;
 use Flarum\Settings\SettingsRepositoryInterface;
+use GuzzleHttp\Client;
 
 /**
  * 图片生成工具：通过 Agnes AI API 生成图片。

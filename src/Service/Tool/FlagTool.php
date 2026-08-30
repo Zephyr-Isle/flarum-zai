@@ -2,7 +2,7 @@
 
 namespace Zephyrisle\FlarumZaiBot\Service\Tool;
 
-use Flarum\Flags\Event\PostWasFlagged;
+use Carbon\Carbon;
 use Flarum\Post\Post;
 use Illuminate\Contracts\Events\Dispatcher;
 
@@ -71,6 +71,12 @@ class FlagTool implements ToolInterface
             return '机器人用户不存在。';
         }
 
+        try {
+            $botUser->assertCan('flag', $post);
+        } catch (\Exception $e) {
+            return '机器人没有举报该帖子的权限。';
+        }
+
         // 检查是否已有举报
         $existingFlag = \Flarum\Flags\Flag::where('post_id', $postId)
             ->where('user_id', $this->botUserId)
@@ -80,12 +86,25 @@ class FlagTool implements ToolInterface
             return "已对该帖子进行过举报，无需重复操作。";
         }
 
+        // 与 flarum/flags 官方创建流程保持一致：
+        //   - type 固定为 'user'（用户举报），原因写入 reason 字段
+        //   - Flag 模型关闭了时间戳，必须显式设置 created_at
+        //   - 保存后派发 Created 事件，触发版主通知
         $flag = new \Flarum\Flags\Flag();
         $flag->post_id = $postId;
         $flag->user_id = $this->botUserId;
-        $flag->type = $reason;
+        $flag->type = 'user';
         $flag->reason = $reason;
+        $flag->created_at = Carbon::now();
         $flag->save();
+
+        if (class_exists(\Flarum\Flags\Event\Created::class)) {
+            try {
+                resolve(Dispatcher::class)->dispatch(new \Flarum\Flags\Event\Created($flag, $botUser));
+            } catch (\Exception $e) {
+                error_log('[flarum-zai-bot] FlagTool: dispatch flag created event failed: ' . $e->getMessage());
+            }
+        }
 
         $reasonLabels = [
             'spam' => '垃圾信息',
@@ -95,6 +114,6 @@ class FlagTool implements ToolInterface
         ];
 
         $reasonLabel = $reasonLabels[$reason] ?? $reason;
-        return "已举报帖子 #{$postId}，原因：{$reasonLabel}。";
+        return "已举报帖子 #{$postId}，原因：{$reasonLabel}。版主会收到通知并尽快处理。";
     }
 }

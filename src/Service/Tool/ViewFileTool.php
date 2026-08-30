@@ -13,7 +13,7 @@ class ViewFileTool implements ToolInterface
 
     public function getDescription(): string
     {
-        return '查看用户上传的文件（文本文件和小图片）。可以列出用户的所有可访问文件，或按关键词搜索。返回文件名称、大小、类型和URL。';
+        return '查看上传的文件（文本文件和小图片）。指定 username 时列出该用户的文件；不指定则列出全站最近上传的可查看文件。返回文件名称、大小、类型和URL。';
     }
 
     public function getParameters(): array
@@ -83,7 +83,7 @@ class ViewFileTool implements ToolInterface
             ->get();
 
         if ($files->isEmpty()) {
-            $userLabel = $user ? "用户 {$user->display_name}" : '当前用户';
+            $userLabel = $user ? "用户 {$user->display_name}" : '全站';
             return "{$userLabel}没有可查看的已上传文件。";
         }
 
