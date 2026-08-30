@@ -14,7 +14,7 @@ zephyrisle-flarum-zai-bot:
       provider_move_down: 'Move down'
       provider_delete: 'Delete this provider'
       provider_add: 'Add provider'
-      provider_empty: 'No providers configured yet. Click “Add provider” to get started.'
+      providers_empty: 'No providers configured yet. Click “Add provider” to get started.'
       provider_url_label: 'API URL'
       provider_url_placeholder: 'https://api.example.com/v1'
       provider_keys_label: 'API Keys (comma-separated, auto-failover)'
