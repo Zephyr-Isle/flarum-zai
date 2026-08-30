@@ -56,10 +56,11 @@ return [
         ]),
 
     // fof/moderator-warnings: 记录警告事件到上下文
+    // （该扩展的事件类是 WarningWasCreated / WarningWasDeleted 等，没有 WarningIssued）
     (new Extend\Conditional())
         ->whenExtensionEnabled('fof-moderator-warnings', fn () => [
             (new Extend\Event())
-                ->listen(\FoF\ModeratorWarnings\Events\WarningIssued::class, \Zephyrisle\FlarumZaiBot\Listener\RecordContextEvent::class),
+                ->listen(\FoF\ModeratorWarnings\Events\WarningWasCreated::class, \Zephyrisle\FlarumZaiBot\Listener\RecordContextEvent::class),
         ]),
 
     (new Extend\Settings())

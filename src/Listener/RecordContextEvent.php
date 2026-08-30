@@ -24,6 +24,9 @@ if (class_exists('\FoF\MovePosts\Event\PostsMoved')) {
 if (class_exists('\FoF\Split\Events\DiscussionWasSplit')) {
     class_alias('\FoF\Split\Events\DiscussionWasSplit', 'ZaiBot_DiscussionWasSplit');
 }
+if (class_exists('\FoF\ModeratorWarnings\Events\WarningWasCreated')) {
+    class_alias('\FoF\ModeratorWarnings\Events\WarningWasCreated', 'ZaiBot_WarningWasCreated');
+}
 if (class_exists('\FoF\ModeratorWarnings\Models\Warning')) {
     class_alias('\FoF\ModeratorWarnings\Models\Warning', 'ZaiBot_ModeratorWarning');
 }
@@ -75,6 +78,8 @@ class RecordContextEvent
             class_exists('ZaiBot_PostsMoved') && $event instanceof \ZaiBot_PostsMoved => $this->onPostsMoved($event),
             // fof/split: 讨论拆分事件
             class_exists('ZaiBot_DiscussionWasSplit') && $event instanceof \ZaiBot_DiscussionWasSplit => $this->onDiscussionSplit($event),
+            // fof/moderator-warnings: 警告事件
+            class_exists('ZaiBot_WarningWasCreated') && $event instanceof \ZaiBot_WarningWasCreated => $this->onWarningIssued($event),
             default => null,
         };
     }
@@ -202,7 +207,7 @@ class RecordContextEvent
         $this->record(
             $event->sourceDiscussion->id,
             null,
-            null,
+            $event->actor?->id ?? null,
             'posts_moved',
             "帖子 [{$postIds}] 从讨论「{$event->sourceDiscussion->title}」移动到讨论「{$event->targetDiscussion->title}」"
         );
@@ -210,16 +215,17 @@ class RecordContextEvent
 
     /**
      * fof/split: 讨论被拆分
+     * （DiscussionWasSplit 的属性是 originalDiscussion / newDiscussion，没有 $discussion）
      */
     public function onDiscussionSplit($event): void
     {
         $postIds = $event->posts->pluck('id')->implode(',');
         $this->record(
-            $event->discussion->id,
+            $event->originalDiscussion->id,
             null,
             $event->actor?->id ?? null,
             'discussion_split',
-            "帖子 [{$postIds}] 从讨论「{$event->discussion->title}」拆分到新讨论「{$event->newDiscussion->title}」(ID:{$event->newDiscussion->id})"
+            "帖子 [{$postIds}] 从讨论「{$event->originalDiscussion->title}」拆分到新讨论「{$event->newDiscussion->title}」(ID:{$event->newDiscussion->id})"
         );
     }
 
@@ -228,10 +234,15 @@ class RecordContextEvent
      */
     public function onWarningIssued($event): void
     {
+        // 事件对象属性异常时静默跳过，不影响正常的警告流程
+        if (!isset($event->warning)) {
+            return;
+        }
+
         $this->record(
             null,
             null,
-            $event->warning->user_id,
+            $event->warning->user_id ?? null,
             'warning_issued',
             "用户收到警告（类型：" . ($event->warning->type ?? '未知') . "）"
         );
