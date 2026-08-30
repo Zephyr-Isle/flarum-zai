@@ -8,6 +8,7 @@ use Flarum\Post\Event\Posted;
 use Flarum\Post\Post;
 use Flarum\Queue\AbstractJob;
 use Flarum\Settings\SettingsRepositoryInterface;
+use Flarum\User\User;
 use Illuminate\Contracts\Events\Dispatcher;
 use Zephyrisle\FlarumZaiBot\Job\Concerns\BuildsBotTools;
 use Zephyrisle\FlarumZaiBot\Job\Concerns\ManagesBotUser;
@@ -59,11 +60,10 @@ class GenerateReplyForPost extends AbstractJob
         $discussion = $post->discussion;
 
         // flarum/lock: 已锁定的讨论不再触发回复
-        if (class_exists('\Flarum\Lock\Event\DiscussionWasLocked::class') || property_exists($discussion, 'is_locked')) {
-            if (!empty($discussion->is_locked)) {
-                error_log('[flarum-zai-bot] GenerateReplyForPost: discussion locked, skip. discussion_id=' . $discussion->id);
-                return;
-            }
+        // （is_locked 是 flarum/lock 添加的数据库列，扩展未安装时该属性为 null，天然跳过）
+        if (!empty($discussion->is_locked)) {
+            error_log('[flarum-zai-bot] GenerateReplyForPost: discussion locked, skip. discussion_id=' . $discussion->id);
+            return;
         }
 
         $botUsername = $settings->get('flarum-zai-bot.username', 'AIGirl');
@@ -72,21 +72,19 @@ class GenerateReplyForPost extends AbstractJob
         $mergeMax = $this->getMergeMax($settings);
         $requireWake = (bool) $settings->get('flarum-zai-bot.wake_merge_require_wake', false);
 
-        // fof/prevent-necrobumping: 检测挖坟（老帖新回复）
+        // 挖坟检测（可配合 fof/prevent-necrobumping 使用）：老讨论突然来了新回复。
+        // 结果在下方构建 $context 后写入，避免被整体赋值覆盖丢失。
         $isNecroBump = false;
-        if (class_exists('\FoF\PreventNecrobumping\Listeners\CheckPostDate::class')) {
-            try {
-                $lastPostAt = $discussion->last_posted_at;
-                if ($lastPostAt) {
-                    $daysSinceLastPost = $lastPostAt->diffInDays(now());
-                    if ($daysSinceLastPost > 30) {
-                        $isNecroBump = true;
-                        $context['necro_bump'] = true;
-                        $context['necro_days'] = $daysSinceLastPost;
-                    }
+        $necroDays = 0;
+        try {
+            $lastPostAt = $discussion->last_posted_at;
+            if ($lastPostAt) {
+                $necroDays = (int) $lastPostAt->diffInDays(now());
+                if ($necroDays > 30) {
+                    $isNecroBump = true;
                 }
-            } catch (\Exception $e) {
             }
+        } catch (\Exception $e) {
         }
 
         $botUser = $this->getBotUser($botUsername);
@@ -99,7 +97,8 @@ class GenerateReplyForPost extends AbstractJob
         $userId = $author ? $author->id : null;
 
         // flarum/suspend: 已封禁用户不触发回复
-        if ($author && $author->is_suspended) {
+        // （flarum/suspend 只有 suspended_until 列，没有 is_suspended 属性）
+        if ($this->authorIsSuspended($author)) {
             error_log('[flarum-zai-bot] GenerateReplyForPost: user suspended, skip. user_id=' . $userId);
             return;
         }
@@ -118,11 +117,14 @@ class GenerateReplyForPost extends AbstractJob
             $secondsSinceLastBotReply = max(0, (int) Carbon::now()->diffInSeconds($lastBotReply->created_at));
         }
 
+        // $post->content 是 Formatter::unparse 后的 Markdown 源文（Flarum 2.x），
+        // 图片提取 / 媒体解析 / 引用检测需要渲染后的 HTML，用 formatContent() 获取。
         $content = $post->content;
+        $contentHtml = $post->formatContent();
         $plainContent = trim(strip_tags((string) $content));
 
         // 纯媒体消息（只有图片没有文字）时给出文本锚点，方便模型理解
-        if ($plainContent === '' && !empty(ImageExtractor::fromHtml($content))) {
+        if ($plainContent === '' && !empty(ImageExtractor::fromHtml($contentHtml))) {
             $plainContent = '（用户发布了一条纯媒体消息，请查看后回应）';
         }
 
@@ -147,7 +149,7 @@ class GenerateReplyForPost extends AbstractJob
             ];
 
             // 历史帖子中的图片，供支持识图的模型参考（AIService 会按最近的优先截取）
-            foreach (ImageExtractor::fromHtml($prevPost->content, 1) as $imgUrl) {
+            foreach (ImageExtractor::fromHtml($prevPost->formatContent(), 1) as $imgUrl) {
                 $historyImages[] = [
                     'url' => $imgUrl,
                     'author' => $authorName,
@@ -199,7 +201,7 @@ class GenerateReplyForPost extends AbstractJob
             $randomChance,
             $botUsername,
             $secondsSinceLastBotReply,
-            $this->repliesToOtherPost($content),
+            $this->repliesToOtherPost($contentHtml),
             count($history)
         );
 
@@ -219,11 +221,11 @@ class GenerateReplyForPost extends AbstractJob
 
         // ===== 消息合并：构建整体提示词与图片列表 =====
         $prompt = $plainContent;
-        $images = ImageExtractor::fromHtml($content);
+        $images = ImageExtractor::fromHtml($contentHtml);
         if ($mergeSeconds > 0 && !empty($mergedPosts)) {
             $prompt = $this->buildMergedPrompt($post, $plainContent, $mergedPosts);
             foreach ($mergedPosts as $mergedPost) {
-                foreach (ImageExtractor::fromHtml((string) $mergedPost->content, 2) as $imgUrl) {
+                foreach (ImageExtractor::fromHtml($mergedPost->formatContent(), 2) as $imgUrl) {
                     $images[] = $imgUrl;
                 }
             }
@@ -303,8 +305,14 @@ class GenerateReplyForPost extends AbstractJob
             'history_images' => $historyImages,
         ];
 
+        // 挖坟提醒：写入此处（$context 构建完成之后），确保不被上方整体赋值覆盖
+        if ($isNecroBump) {
+            $context['necro_bump'] = true;
+            $context['necro_days'] = $necroDays;
+        }
+
         // flarum/tags: 注入讨论标签信息
-        if (class_exists('\Flarum\Tags\Tag::class') && method_exists($discussion, 'tags')) {
+        if (class_exists(\Flarum\Tags\Tag) && method_exists($discussion, 'tags')) {
             try {
                 $tags = $discussion->tags()->pluck('name')->filter()->values()->all();
                 if (!empty($tags)) {
@@ -315,7 +323,7 @@ class GenerateReplyForPost extends AbstractJob
         }
 
         // fof/byobu: 私有讨论检测与收件人信息
-        if (class_exists('\FoF\Byobu\Listeners\IgnoreApprovals::class')) {
+        if (class_exists(\FoF\Byobu\Listeners\IgnoreApprovals)) {
             try {
                 if (!empty($discussion->isByobu)) {
                     $context['is_private_discussion'] = true;
@@ -333,7 +341,7 @@ class GenerateReplyForPost extends AbstractJob
         }
 
         // fof/upload: 解析帖子中的文件附件信息
-        if (class_exists('\FoF\Upload\File::class')) {
+        if (class_exists(\FoF\Upload\File::class)) {
             try {
                 $fofFiles = \FoF\Upload\File::where('post_id', $post->id)->get();
                 if ($fofFiles->isNotEmpty()) {
@@ -341,7 +349,8 @@ class GenerateReplyForPost extends AbstractJob
                     foreach ($fofFiles as $file) {
                         $line = "- {$file->name}";
                         if ($file->size) {
-                            $line .= "（{$file->formatSize()}）";
+                            // fof/upload File 模型没有 formatSize()，大小格式化由本扩展自己完成
+                            $line .= "（{$this->humanSize((int) $file->size)}）";
                         }
                         $fileLines[] = $line;
                     }
@@ -352,7 +361,7 @@ class GenerateReplyForPost extends AbstractJob
         }
 
         // fof/polls: 注入投票信息
-        if (class_exists('\FoF\Polls\Poll::class')) {
+        if (class_exists(\FoF\Polls\Poll)) {
             try {
                 $poll = \FoF\Polls\Poll::where('discussion_id', $discussion->id)->first();
                 if ($poll) {
@@ -368,7 +377,7 @@ class GenerateReplyForPost extends AbstractJob
         }
 
         // fof/pages: 注入关联页面内容（如果讨论与页面关联）
-        if (class_exists('\FoF\Pages\Page::class')) {
+        if (class_exists(\FoF\Pages\Page)) {
             try {
                 // 查找与当前讨论关联的页面（通过 discussion 的 slug 或关系）
                 $page = \FoF\Pages\Page::where('discussion_id', $discussion->id)->first();
@@ -381,7 +390,7 @@ class GenerateReplyForPost extends AbstractJob
         }
 
         // linkrobins/wiki: 注入 Wiki 文章内容（如果讨论标题匹配 Wiki 文章）
-        if (class_exists('\LinkRobins\Wiki\WikiArticle::class')) {
+        if (class_exists(\LinkRobins\Wiki\WikiArticle)) {
             try {
                 // 按讨论标题模糊搜索 Wiki 文章
                 $wikiArticle = \LinkRobins\Wiki\WikiArticle::where('title', 'LIKE', '%' . mb_substr($discussion->title, 0, 20) . '%')
@@ -401,7 +410,7 @@ class GenerateReplyForPost extends AbstractJob
             $context['group_names'] = $author->groups->pluck('name_singular')->implode(', ') ?: null;
 
             // flarum/nicknames: 优先使用昵称作为显示名
-            if (class_exists('\Flarum\Nicknames\NicknameDriver::class') && !empty($author->nickname)) {
+            if (class_exists(\Flarum\Nicknames\NicknameDriver) && !empty($author->nickname)) {
                 $context['display_name'] = $author->nickname;
             }
 
@@ -422,7 +431,7 @@ class GenerateReplyForPost extends AbstractJob
             }
 
             // fof/socialprofile: 注入用户社交资料
-            if (class_exists('\FoF\SocialProfile\Listeners\SaveUserPreferences::class') && !empty($author->social_buttons)) {
+            if (class_exists(\FoF\SocialProfile\Listeners\SaveUserPreferences) && !empty($author->social_buttons)) {
                 try {
                     $socialButtons = json_decode($author->social_buttons, true);
                     if (is_array($socialButtons) && !empty($socialButtons)) {
@@ -444,7 +453,7 @@ class GenerateReplyForPost extends AbstractJob
         }
 
         // fof/geoip: 注入发帖者地理位置信息
-        if (class_exists('\FoF\GeoIP\Listeners\RetrieveIP::class')) {
+        if (class_exists(\FoF\GeoIP\Listeners\RetrieveIP)) {
             try {
                 $ipInfo = $post->ip_info()->first();
                 if ($ipInfo) {
@@ -463,24 +472,17 @@ class GenerateReplyForPost extends AbstractJob
             }
         }
 
-        // flarum/sticky: 检测置顶讨论
-        if (class_exists('\Flarum\Sticky\Event\DiscussionWasSticked::class') || property_exists($discussion, 'is_sticky')) {
-            if (!empty($discussion->is_sticky)) {
-                $context['is_sticky'] = true;
-            }
+        // flarum/sticky: 检测置顶讨论（is_sticky 为 flarum/sticky 添加的列，未安装时为 null）
+        if (!empty($discussion->is_sticky)) {
+            $context['is_sticky'] = true;
         }
 
-        // fof/discussion-views: 注入讨论浏览量
-        if (class_exists('\FoF\DiscussionViews\Listeners\SavePostViews::class') || property_exists($discussion, 'comment_count')) {
-            try {
-                $viewCount = $discussion->comment_count ?? 0;
-                if ($viewCount > 100) {
-                    $context['discussion_popularity'] = 'high';
-                } elseif ($viewCount > 50) {
-                    $context['discussion_popularity'] = 'medium';
-                }
-            } catch (\Exception $e) {
-            }
+        // 讨论热度：comment_count 是 Flarum 核心列（回复数），超过阈值视为高热度
+        $viewCount = (int) ($discussion->comment_count ?? 0);
+        if ($viewCount > 100) {
+            $context['discussion_popularity'] = 'high';
+        } elseif ($viewCount > 50) {
+            $context['discussion_popularity'] = 'medium';
         }
 
         // flarum/subscriptions: 检查当前用户订阅状态
@@ -515,7 +517,7 @@ class GenerateReplyForPost extends AbstractJob
         }
 
         // linkrobins/auto-verify: 自动验证用户（机器人绕过）
-        if (class_exists('\LinkRobins\AutoVerify\Listeners\AutoVerifyUser::class') && $author) {
+        if (class_exists(\LinkRobins\AutoVerify\Listeners\AutoVerifyUser) && $author) {
             try {
                 if (!$author->is_verified && $author->email && $author->joined_at) {
                     $daysSinceJoin = $author->joined_at->diffInDays(now());
@@ -528,7 +530,7 @@ class GenerateReplyForPost extends AbstractJob
         }
 
         // tryhackx/flarum-advanced-pages: 注入高级页面内容
-        if (class_exists('\TryHackX\AdvancedPages\Page::class')) {
+        if (class_exists(\TryHackX\AdvancedPages\Page)) {
             try {
                 $advancedPage = \TryHackX\AdvancedPages\Page::where('discussion_id', $discussion->id)->first();
                 if ($advancedPage && $advancedPage->content) {
@@ -540,7 +542,7 @@ class GenerateReplyForPost extends AbstractJob
         }
 
         // shebaoting/flarum-repost: 检测转发内容
-        if (class_exists('\Shebaoting\Repost\Post\RepostedPost::class')) {
+        if (class_exists(\Shebaoting\Repost\Post\RepostedPost)) {
             try {
                 $repostedPost = \Shebaoting\Repost\Post\RepostedPost::where('post_id', $post->id)->first();
                 if ($repostedPost && $repostedPost->original_post_id) {
@@ -555,7 +557,7 @@ class GenerateReplyForPost extends AbstractJob
         }
 
         // ===== 媒体解析：链接摘要与文件信息注入 =====
-        $context['media_context'] = $this->buildMediaContext($content, $settings);
+        $context['media_context'] = $this->buildMediaContext($contentHtml, $settings);
 
         // ===== 上下文注入：场景/身份环境字段 + 讨论近期事件 =====
         // 注入时机（proactive/all/off）、格式（concise/detailed）与截断由设置控制（见 ContextInjectionService）
@@ -670,7 +672,7 @@ class GenerateReplyForPost extends AbstractJob
         $botPost->save();
 
         // flarum/approval: 机器人帖子自动通过审批，避免等待人工审核
-        if (class_exists('\Flarum\Approval\Listener\UnapproveNewContent::class')) {
+        if (class_exists(\Flarum\Approval\Listener\UnapproveNewContent::class)) {
             if (!$botPost->is_approved) {
                 $botPost->is_approved = true;
                 $botPost->save();
@@ -678,7 +680,7 @@ class GenerateReplyForPost extends AbstractJob
         }
 
         // flarum/akismet: 机器人帖子标记为非垃圾信息
-        if (class_exists('\Flarum\Akismet\Listener\ValidatePost::class')) {
+        if (class_exists(\Flarum\Akismet\Listener\ValidatePost::class)) {
             if (!empty($botPost->is_spam)) {
                 $botPost->is_spam = false;
                 $botPost->save();
@@ -816,7 +818,7 @@ class GenerateReplyForPost extends AbstractJob
                 $randomChance,
                 $botUsername,
                 $secondsSinceLastBotReply,
-                $this->repliesToOtherPost((string) $candidate->content),
+                $this->repliesToOtherPost($candidate->formatContent()),
                 count($history)
             )->reply) {
                 continue;
@@ -868,6 +870,47 @@ class GenerateReplyForPost extends AbstractJob
         } catch (\Exception $e) {
             return false;
         }
+    }
+
+    /**
+     * 用户是否处于封禁期（flarum/suspend）。
+     * suspended_until 依据扩展版本可能为字符串或 Carbon 实例，两者都兼容。
+     */
+    protected function authorIsSuspended(?User $author): bool
+    {
+        if (!$author) {
+            return false;
+        }
+
+        $until = $author->suspended_until ?? null;
+
+        if ($until instanceof \DateTimeInterface) {
+            return $until->getTimestamp() > time();
+        }
+
+        if (is_string($until) && $until !== '') {
+            $ts = strtotime($until);
+
+            return $ts !== false && $ts > time();
+        }
+
+        return false;
+    }
+
+    /**
+     * 文件大小的人类可读格式（fof/upload File 模型没有 formatSize 方法）。
+     */
+    protected function humanSize(int $bytes): string
+    {
+        $units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        $i = 0;
+        $value = (float) $bytes;
+        while ($value >= 1024 && $i < count($units) - 1) {
+            $value /= 1024;
+            $i++;
+        }
+
+        return round($value, $value >= 10 ? 0 : 1) . ' ' . $units[$i];
     }
 
     /**

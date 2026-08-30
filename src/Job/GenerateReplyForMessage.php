@@ -60,7 +60,8 @@ class GenerateReplyForMessage extends AbstractJob
         $author = $message->user;
 
         // flarum/suspend: 已封禁用户不触发回复
-        if ($author && $author->is_suspended) {
+        // （flarum/suspend 只有 suspended_until 列，没有 is_suspended 属性）
+        if ($this->authorIsSuspended($author)) {
             error_log('[flarum-zai-bot] GenerateReplyForMessage: user suspended, skip. user_id=' . $author->id);
             return;
         }
@@ -90,7 +91,7 @@ class GenerateReplyForMessage extends AbstractJob
             ];
 
             // 历史私信中的图片，供支持识图的模型参考（AIService 会按最近的优先截取）
-            foreach (ImageExtractor::fromHtml((string) $prevMsg->content, 1) as $imgUrl) {
+            foreach (ImageExtractor::fromHtml($prevMsg->formatContent(), 1) as $imgUrl) {
                 $historyImages[] = [
                     'url' => $imgUrl,
                     'author' => $authorName,
@@ -148,7 +149,7 @@ class GenerateReplyForMessage extends AbstractJob
             'memories' => $memories,
             'conversation_history' => $history,
             // 当前私信中的图片（http(s)/data URI），供支持识图的模型查看（见 AIService）
-            'images' => ImageExtractor::fromHtml((string) $message->content),
+            'images' => ImageExtractor::fromHtml($message->formatContent()),
             // 对话历史私信中的图片，让模型能结合更早的图片回答
             'history_images' => $historyImages,
         ];
@@ -159,7 +160,7 @@ class GenerateReplyForMessage extends AbstractJob
             $context['group_names'] = $author->groups->pluck('name_singular')->implode(', ') ?: null;
 
             // flarum/nicknames: 优先使用昵称作为显示名
-            if (class_exists('\Flarum\Nicknames\NicknameDriver::class') && !empty($author->nickname)) {
+            if (class_exists(\Flarum\Nicknames\NicknameDriver::class) && !empty($author->nickname)) {
                 $context['display_name'] = $author->nickname;
             }
 
@@ -180,7 +181,7 @@ class GenerateReplyForMessage extends AbstractJob
             }
 
             // fof/socialprofile: 注入用户社交资料
-            if (class_exists('\FoF\SocialProfile\Listeners\SaveUserPreferences::class') && !empty($author->social_buttons)) {
+            if (class_exists(\FoF\SocialProfile\Listeners\SaveUserPreferences::class) && !empty($author->social_buttons)) {
                 try {
                     $socialButtons = json_decode($author->social_buttons, true);
                     if (is_array($socialButtons) && !empty($socialButtons)) {
@@ -206,7 +207,7 @@ class GenerateReplyForMessage extends AbstractJob
         $prompt = $plain !== '' ? $message->content : '（用户发送了一条纯媒体消息，请查看后回应）';
 
         // ===== 媒体解析：链接摘要与文件信息注入 =====
-        $context['media_context'] = $this->buildMediaContext((string) $message->content, $settings);
+        $context['media_context'] = $this->buildMediaContext($message->formatContent(), $settings);
 
         // ===== 上下文注入：场景/身份环境字段 + 讨论近期事件 =====
         // 私信无主动/被动之分，只要注入时机不是关闭即注入（见 ContextInjectionService）
@@ -299,6 +300,31 @@ class GenerateReplyForMessage extends AbstractJob
         } catch (\Throwable $e) {
             error_log('[flarum-zai-bot] GenerateReplyForMessage: Created event dispatch failed: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * 用户是否处于封禁期（flarum/suspend）。
+     * suspended_until 依据扩展版本可能为字符串或 Carbon 实例，两者都兼容。
+     */
+    protected function authorIsSuspended(?\Flarum\User\User $author): bool
+    {
+        if (!$author) {
+            return false;
+        }
+
+        $until = $author->suspended_until ?? null;
+
+        if ($until instanceof \DateTimeInterface) {
+            return $until->getTimestamp() > time();
+        }
+
+        if (is_string($until) && $until !== '') {
+            $ts = strtotime($until);
+
+            return $ts !== false && $ts > time();
+        }
+
+        return false;
     }
 
     /**

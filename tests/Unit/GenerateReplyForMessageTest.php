@@ -50,9 +50,11 @@ class GenerateReplyForMessageTest extends TestCase
 
         // DialogMessage 的 content 访问器/修改器依赖 Flarum\Formatter\Formatter，
         // 注入一个 passthrough mock（内容原样存取，模拟未启用格式化的情况）。
+        // render() 供 Job 的 formatContent()（图片提取/媒体解析）使用。
         $formatter = Mockery::mock(\Flarum\Formatter\Formatter::class);
         $formatter->shouldReceive('parse')->andReturnUsing(fn ($value) => $value);
         $formatter->shouldReceive('unparse')->andReturnUsing(fn ($value) => $value);
+        $formatter->shouldReceive('render')->andReturnUsing(fn ($value) => (string) $value);
         DialogMessage::setFormatter($formatter);
 
         // User::display_name 的读取走 getDisplayNameAttribute，依赖容器注入的驱动。
