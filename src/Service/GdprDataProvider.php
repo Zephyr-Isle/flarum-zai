@@ -60,17 +60,7 @@ class GdprDataProvider extends DataType
             $data['affinity_error'] = $e->getMessage();
         }
 
-        // 2. 记忆数据
-        try {
-            $memories = \Zephyrisle\FlarumZaiBot\Model\BotRelation::where('user_id', $user->id)
-                ->orWhere('target_user_id', $user->id)
-                ->get();
-            // 注意：记忆存储在外部 pgvector 数据库中，无法直接查询
-            // 只能导出关系网数据
-        } catch (\Exception $e) {
-        }
-
-        // 3. 关系网数据
+        // 2. 关系网数据
         try {
             $relations = \Zephyrisle\FlarumZaiBot\Model\BotRelation::where('user_id', $user->id)->get();
             if ($relations->isNotEmpty()) {
@@ -88,22 +78,10 @@ class GdprDataProvider extends DataType
             $data['relations_error'] = $e->getMessage();
         }
 
-        // 4. 表达规则（如果是手动创建的）
-        try {
-            $expressions = \Zephyrisle\FlarumZaiBot\Model\BotExpression::where('user_id', $user->id)->get();
-            if ($expressions->isNotEmpty()) {
-                $data['expressions'] = $expressions->map(function ($expr) {
-                    return [
-                        'name' => $expr->name,
-                        'situation' => $expr->situation,
-                        'template' => $expr->template,
-                        'status' => $expr->status,
-                    ];
-                })->toArray();
-            }
-        } catch (\Exception $e) {
-            $data['expressions_error'] = $e->getMessage();
-        }
+        // 3. 表达规则：bot_expressions 是全局规则表（没有 user_id 列），不含个人数据，
+        //    不纳入用户数据导出。
+        // 4. 记忆数据存储在外部 pgvector 数据库中，无法通过 Eloquent 直接查询，
+        //    请管理员在后台记忆管理页按用户检索并删除。
 
         return $data;
     }
@@ -129,12 +107,7 @@ class GdprDataProvider extends DataType
             error_log('[flarum-zai-bot] GDPR forget relation failed: ' . $e->getMessage());
         }
 
-        // 3. 删除表达规则（如果是手动创建的）
-        try {
-            \Zephyrisle\FlarumZaiBot\Model\BotExpression::where('user_id', $user->id)->delete();
-        } catch (\Exception $e) {
-            error_log('[flarum-zai-bot] GDPR forget expression failed: ' . $e->getMessage());
-        }
+        // 3. 表达规则：bot_expressions 是全局规则表（没有 user_id 列），不含个人数据，无需删除。
 
         // 4. 记忆数据存储在外部 pgvector 数据库中
         // 需要通过 MemoryService 删除，但这里不直接依赖
