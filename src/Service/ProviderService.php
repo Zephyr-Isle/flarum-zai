@@ -27,7 +27,10 @@ class ProviderService
     ) {}
 
     /**
-     * LLM 对话端点列表：[{name, api_url, api_key, model}]
+     * LLM 对话端点列表：[{name, api_url, api_key, model, capabilities}]
+     *
+     * capabilities 为关联数组：['image' => bool, 'video' => bool, 'audio' => bool]
+     * 表示该端点支持的多模态输入类型。
      */
     public function chatEndpoints(): array
     {
@@ -153,14 +156,16 @@ class ProviderService
         foreach ($providers as $provider) {
             $url = rtrim($provider['api_url'] ?? '', '/');
             $model = $provider['model'] ?? $defaultModel;
+
+            // 向后兼容：旧版 vision: true → capabilities.image = true
+            $capabilities = $this->resolveCapabilities($provider);
+
             foreach ($this->parseKeys($provider['api_keys'] ?? '') as $key) {
                 $endpoint = [
                     'name' => $provider['name'] ?? 'Provider',
                     'api_url' => $url,
                     'api_key' => $key,
-                    // 该供应商的模型是否支持识图（视觉输入）。启用后，用户帖子/私信
-                    // 中的图片会以 image_url 形式发送给该模型（见 AIService）。
-                    'vision' => (bool) ($provider['vision'] ?? false),
+                    'capabilities' => $capabilities,
                 ];
                 if ($model !== null) {
                     $endpoint['model'] = $model;
@@ -170,6 +175,32 @@ class ProviderService
         }
 
         return $endpoints;
+    }
+
+    /**
+     * 从供应商配置中解析多模态能力标志。
+     *
+     * 优先读取新格式 capabilities: {image: bool, video: bool, audio: bool}，
+     * 若不存在则从旧格式 vision: bool 迁移（仅设置 image 能力）。
+     */
+    protected function resolveCapabilities(array $provider): array
+    {
+        $caps = $provider['capabilities'] ?? null;
+
+        if (is_array($caps)) {
+            return [
+                'image' => (bool) ($caps['image'] ?? false),
+                'video' => (bool) ($caps['video'] ?? false),
+                'audio' => (bool) ($caps['audio'] ?? false),
+            ];
+        }
+
+        // 旧版 vision: true → capabilities.image = true
+        return [
+            'image' => (bool) ($provider['vision'] ?? false),
+            'video' => false,
+            'audio' => false,
+        ];
     }
 
     protected function parseKeys(string $raw): array

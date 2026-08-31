@@ -959,6 +959,36 @@
         }
     }
 
+    .ZaiBot-provider-capabilities {
+        grid-column: 1 / -1;
+
+        .ZaiBot-provider-capabilities-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #667c99;
+            margin-bottom: 6px;
+        }
+
+        .ZaiBot-provider-capabilities-list {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .ZaiBot-provider-capability {
+            display: flex;
+            align-items: center;
+            font-size: 12px;
+            color: #333;
+        }
+
+        .helpText {
+            margin-top: 4px;
+            font-size: 11px;
+            color: #7c7c7c;
+        }
+    }
+
     @media (prefers-color-scheme: dark) {
         .ZaiBot-providers-title {
             color: #c8d0dc;
@@ -1005,6 +1035,20 @@
 
             .ZaiBot-provider-field-error {
                 color: #ef9a9a;
+            }
+        }
+
+        .ZaiBot-provider-capabilities {
+            .ZaiBot-provider-capabilities-label {
+                color: #8899b0;
+            }
+
+            .ZaiBot-provider-capability {
+                color: #c8d0dc;
+            }
+
+            .helpText {
+                color: #667a8e;
             }
         }
     }

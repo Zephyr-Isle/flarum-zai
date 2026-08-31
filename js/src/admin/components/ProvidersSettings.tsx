@@ -10,7 +10,11 @@ interface Provider {
     api_keys: string;
     model: string;
     enabled: boolean;
-    vision: boolean;
+    capabilities: {
+        image: boolean;
+        video: boolean;
+        audio: boolean;
+    };
 }
 
 interface ProvidersSettingsAttrs {
@@ -70,14 +74,29 @@ export default class ProvidersSettings extends Component<ProvidersSettingsAttrs>
 
         return decoded
             .filter((p: any) => p && typeof p === 'object')
-            .map((p: any) => ({
-                name: typeof p.name === 'string' ? p.name : '',
-                api_url: typeof p.api_url === 'string' ? p.api_url : '',
-                api_keys: typeof p.api_keys === 'string' ? p.api_keys : '',
-                model: typeof p.model === 'string' ? p.model : '',
-                enabled: p.enabled !== false,
-                vision: p.vision === true,
-            }));
+            .map((p: any) => {
+                // 向后兼容：旧版 vision: true → capabilities.image = true
+                let capabilities = p.capabilities;
+                if (!capabilities || typeof capabilities !== 'object') {
+                    capabilities = {
+                        image: p.vision === true,
+                        video: false,
+                        audio: false,
+                    };
+                }
+                return {
+                    name: typeof p.name === 'string' ? p.name : '',
+                    api_url: typeof p.api_url === 'string' ? p.api_url : '',
+                    api_keys: typeof p.api_keys === 'string' ? p.api_keys : '',
+                    model: typeof p.model === 'string' ? p.model : '',
+                    enabled: p.enabled !== false,
+                    capabilities: {
+                        image: capabilities.image === true,
+                        video: capabilities.video === true,
+                        audio: capabilities.audio === true,
+                    },
+                };
+            });
     }
 
     /**
@@ -94,7 +113,11 @@ export default class ProvidersSettings extends Component<ProvidersSettingsAttrs>
                 api_keys: keys,
                 model: app.data.settings['flarum-zai-bot.model'] || 'gpt-4o-mini',
                 enabled: true,
-                vision: false,
+                capabilities: {
+                    image: false,
+                    video: false,
+                    audio: false,
+                },
             },
         ];
     }
@@ -107,7 +130,7 @@ export default class ProvidersSettings extends Component<ProvidersSettingsAttrs>
                 api_keys: p.api_keys,
                 model: p.model,
                 enabled: p.enabled,
-                vision: p.vision,
+                capabilities: p.capabilities,
             }))
         );
     }
@@ -124,7 +147,11 @@ export default class ProvidersSettings extends Component<ProvidersSettingsAttrs>
             api_keys: '',
             model: 'gpt-4o-mini',
             enabled: true,
-            vision: false,
+            capabilities: {
+                image: false,
+                video: false,
+                audio: false,
+            },
         });
         this.persist();
     }
@@ -264,12 +291,38 @@ export default class ProvidersSettings extends Component<ProvidersSettingsAttrs>
                     { spellcheck: false, autocapitalize: 'off', autocorrect: 'off' }
                 ),
                 this.renderField(index, 'model', this.t('provider_model_label'), p.model, this.t('provider_model_placeholder')),
-                m('div', { className: 'ZaiBot-provider-vision' }, [
-                    m(Switch, {
-                        state: p.vision,
-                        onchange: (val: boolean) => this.update(index, 'vision', val),
-                    }, this.t('provider_vision_label')),
-                    m('div', { className: 'helpText' }, this.t('provider_vision_help')),
+                m('div', { className: 'ZaiBot-provider-capabilities' }, [
+                    m('div', { className: 'ZaiBot-provider-capabilities-label' }, this.t('provider_capabilities_label')),
+                    m('div', { className: 'ZaiBot-provider-capabilities-list' }, [
+                        m('div', { className: 'ZaiBot-provider-capability' }, [
+                            m(Switch, {
+                                state: p.capabilities.image,
+                                onchange: (val: boolean) => {
+                                    this.providers[index].capabilities.image = val;
+                                    this.persist();
+                                },
+                            }, this.t('provider_capability_image')),
+                        ]),
+                        m('div', { className: 'ZaiBot-provider-capability' }, [
+                            m(Switch, {
+                                state: p.capabilities.video,
+                                onchange: (val: boolean) => {
+                                    this.providers[index].capabilities.video = val;
+                                    this.persist();
+                                },
+                            }, this.t('provider_capability_video')),
+                        ]),
+                        m('div', { className: 'ZaiBot-provider-capability' }, [
+                            m(Switch, {
+                                state: p.capabilities.audio,
+                                onchange: (val: boolean) => {
+                                    this.providers[index].capabilities.audio = val;
+                                    this.persist();
+                                },
+                            }, this.t('provider_capability_audio')),
+                        ]),
+                    ]),
+                    m('div', { className: 'helpText' }, this.t('provider_capabilities_help')),
                 ]),
             ]),
         ]);

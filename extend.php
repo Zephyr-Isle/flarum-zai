@@ -138,7 +138,9 @@ return [
         ->post('/zai-bot/test-api', 'zai-bot.test-api', \Zephyrisle\FlarumZaiBot\Api\Controller\TestApiController::class)
         ->post('/zai-bot/test-agnes', 'zai-bot.test-agnes', \Zephyrisle\FlarumZaiBot\Api\Controller\TestAgnesController::class)
         ->get('/zai-bot/jina-proxy', 'zai-bot.jina-proxy', \Zephyrisle\FlarumZaiBot\Api\Controller\JinaProxyController::class)
-        // 免鉴权图片代理：供 AI 模型视觉 API 拉取 fof/upload 的私有图片（见 ImageExtractor / VisionImageController）
+        // 免鉴权媒体代理：供 AI 模型多模态 API 拉取 fof/upload 的私有文件（见 MediaExtractor / VisionMediaController）
+        ->get('/zai-bot/vision-media/{uuid}', 'zai-bot.vision-media', \Zephyrisle\FlarumZaiBot\Api\Controller\VisionMediaController::class)
+        // 向后兼容旧路由（仅代理图片）
         ->get('/zai-bot/vision-image/{uuid}', 'zai-bot.vision-image', \Zephyrisle\FlarumZaiBot\Api\Controller\VisionImageController::class)
 
 ];

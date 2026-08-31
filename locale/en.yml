@@ -27,6 +27,11 @@ zephyrisle-flarum-zai-bot:
       provider_model_required: 'Model is required'
       provider_vision_label: 'Model supports image recognition (vision input)'
       provider_vision_help: 'When enabled, images in user posts/messages are sent to this model as image content so it can see and understand them. Only enable for vision-capable models (e.g. gpt-4o, qwen-vl, glm-4v).'
+      provider_capabilities_label: 'Multimodal capabilities'
+      provider_capabilities_help: 'When enabled, media in posts/messages is sent to the model in the corresponding format. Unsupported types fall back to text descriptions.'
+      provider_capability_image: 'Image'
+      provider_capability_video: 'Video'
+      provider_capability_audio: 'Audio'
       providers_migrated: 'Legacy settings detected and imported into the list above. Please review and save.'
       username_label: Bot Username
       random_reply_chance_label: 'Random Reply Chance (%)'

@@ -11,7 +11,7 @@ use Zephyrisle\FlarumZaiBot\Job\Concerns\BuildsBotTools;
 use Zephyrisle\FlarumZaiBot\Job\Concerns\ManagesBotUser;
 use Zephyrisle\FlarumZaiBot\Model\BotAffinity;
 use Zephyrisle\FlarumZaiBot\Service\AIService;
-use Zephyrisle\FlarumZaiBot\Service\ImageExtractor;
+use Zephyrisle\FlarumZaiBot\Service\MediaExtractor;
 use Zephyrisle\FlarumZaiBot\Service\Media\FileParsingService;
 use Zephyrisle\FlarumZaiBot\Service\Media\LinkParsingService;
 use Zephyrisle\FlarumZaiBot\Service\MemoryService;
@@ -91,7 +91,7 @@ class GenerateReplyForMessage extends AbstractJob
             ];
 
             // 历史私信中的图片，供支持识图的模型参考（AIService 会按最近的优先截取）
-            foreach (ImageExtractor::fromHtml($prevMsg->formatContent(), 1) as $imgUrl) {
+            foreach (MediaExtractor::fromHtml($prevMsg->formatContent(), 1) as $imgUrl) {
                 $historyImages[] = [
                     'url' => $imgUrl,
                     'author' => $authorName,
@@ -148,8 +148,10 @@ class GenerateReplyForMessage extends AbstractJob
             'portrait_summary' => $portraitSummary,
             'memories' => $memories,
             'conversation_history' => $history,
-            // 当前私信中的图片（http(s)/data URI），供支持识图的模型查看（见 AIService）
-            'images' => ImageExtractor::fromHtml($message->formatContent()),
+            // 当前私信中的多模态媒体（http(s)/data URI），供支持多模态的模型查看（见 AIService）
+            'images' => MediaExtractor::fromHtml($message->formatContent()),
+            'videos' => MediaExtractor::videosFromHtml($message->formatContent()),
+            'audios' => MediaExtractor::audiosFromHtml($message->formatContent()),
             // 对话历史私信中的图片，让模型能结合更早的图片回答
             'history_images' => $historyImages,
         ];
@@ -202,9 +204,18 @@ class GenerateReplyForMessage extends AbstractJob
             }
         }
 
-        // 纯媒体消息（只有图片没有文字）时给出文本锚点；私聊任何消息都会触发回复（媒体唤醒）
+        // 纯媒体消息（只有图片/视频/音频没有文字）时给出文本锚点；私聊任何消息都会触发回复（媒体唤醒）
         $plain = trim(strip_tags((string) $message->content));
-        $prompt = $plain !== '' ? $message->content : '（用户发送了一条纯媒体消息，请查看后回应）';
+        $hasMedia = !empty(MediaExtractor::fromHtml($message->formatContent()))
+            || !empty(MediaExtractor::videosFromHtml($message->formatContent()))
+            || !empty(MediaExtractor::audiosFromHtml($message->formatContent()));
+        if ($plain !== '') {
+            $prompt = $message->content;
+        } elseif ($hasMedia) {
+            $prompt = '（用户发送了一条纯媒体消息，请查看后回应）';
+        } else {
+            $prompt = $message->content;
+        }
 
         // ===== 媒体解析：链接摘要与文件信息注入 =====
         $context['media_context'] = $this->buildMediaContext($message->formatContent(), $settings);

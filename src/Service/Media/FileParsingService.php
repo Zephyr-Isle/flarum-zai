@@ -5,7 +5,7 @@ namespace Zephyrisle\FlarumZaiBot\Service\Media;
 use Flarum\Foundation\Paths;
 use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Contracts\Filesystem\Factory as FilesystemFactory;
-use Zephyrisle\FlarumZaiBot\Service\ImageExtractor;
+use Zephyrisle\FlarumZaiBot\Service\MediaExtractor;
 
 /**
  * 文件解析：帖子/私信中引用的 fof/upload 文件自动注入文件名与大小；
@@ -42,7 +42,7 @@ class FileParsingService
         }
 
         $results = [];
-        foreach (ImageExtractor::uploadUuids($contentHtml) as $uuid) {
+        foreach (MediaExtractor::uploadUuids($contentHtml) as $uuid) {
             $file = $this->findFile($uuid);
             if (!$file || $file->hidden) {
                 continue;

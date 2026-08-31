@@ -27,6 +27,11 @@ zephyrisle-flarum-zai-bot:
       provider_model_required: '模型不能为空'
       provider_vision_label: '模型支持识图（视觉输入）'
       provider_vision_help: '启用后，用户帖子/私信中的图片会以图片形式发送给该模型，供其识别理解（模型将知道图片的存在并可查看内容）。仅支持视觉输入的模型可启用，如 gpt-4o、qwen-vl、glm-4v 等。'
+      provider_capabilities_label: '多模态能力'
+      provider_capabilities_help: '启用对应的多模态能力后，帖子/私信中的媒体会以对应格式发送给模型。不支持的类型会降级为文本描述。'
+      provider_capability_image: '图片'
+      provider_capability_video: '视频'
+      provider_capability_audio: '音频'
       providers_migrated: '检测到旧版设置，已自动导入到上方列表，请核对后保存。'
       username_label: 机器人用户名
       random_reply_chance_label: '随机回复概率（%）'

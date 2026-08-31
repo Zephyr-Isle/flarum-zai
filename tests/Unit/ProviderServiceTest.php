@@ -63,12 +63,12 @@ class ProviderServiceTest extends TestCase
         $this->assertSame('gpt-4o-mini', $endpoints[2]['model']);
     }
 
-    public function testChatEndpointsCarriesVisionFlag(): void
+    public function testChatEndpointsCarriesCapabilities(): void
     {
         $this->settings->shouldReceive('get')->andReturnUsing(function (string $key, mixed $default = null) {
             return match ($key) {
                 'flarum-zai-bot.providers' => json_encode([
-                    ['name' => 'Vision', 'api_url' => 'https://api.openai.com/v1', 'api_keys' => 'sk-a', 'model' => 'gpt-4o', 'vision' => true],
+                    ['name' => 'Multimodal', 'api_url' => 'https://api.mimo.com/v1', 'api_keys' => 'sk-a', 'model' => 'mimo-v2.5', 'capabilities' => ['image' => true, 'video' => true, 'audio' => true]],
                     ['name' => 'Text', 'api_url' => 'https://api.deepseek.com/v1', 'api_keys' => 'sk-b', 'model' => 'deepseek-chat'],
                 ]),
                 default => $default,
@@ -77,9 +77,32 @@ class ProviderServiceTest extends TestCase
 
         $endpoints = $this->service()->chatEndpoints();
 
-        $this->assertTrue($endpoints[0]['vision']);
-        // 未配置 vision 的供应商默认为不支持识图
-        $this->assertFalse($endpoints[1]['vision']);
+        $this->assertTrue($endpoints[0]['capabilities']['image']);
+        $this->assertTrue($endpoints[0]['capabilities']['video']);
+        $this->assertTrue($endpoints[0]['capabilities']['audio']);
+        // 未配置 capabilities 的供应商默认不支持任何多模态
+        $this->assertFalse($endpoints[1]['capabilities']['image']);
+        $this->assertFalse($endpoints[1]['capabilities']['video']);
+        $this->assertFalse($endpoints[1]['capabilities']['audio']);
+    }
+
+    public function testChatEndpointsCarriesVisionFlagBackwardCompat(): void
+    {
+        // 旧版 vision: true 应迁移为 capabilities.image = true
+        $this->settings->shouldReceive('get')->andReturnUsing(function (string $key, mixed $default = null) {
+            return match ($key) {
+                'flarum-zai-bot.providers' => json_encode([
+                    ['name' => 'Vision', 'api_url' => 'https://api.openai.com/v1', 'api_keys' => 'sk-a', 'model' => 'gpt-4o', 'vision' => true],
+                ]),
+                default => $default,
+            };
+        });
+
+        $endpoints = $this->service()->chatEndpoints();
+
+        $this->assertTrue($endpoints[0]['capabilities']['image']);
+        $this->assertFalse($endpoints[0]['capabilities']['video']);
+        $this->assertFalse($endpoints[0]['capabilities']['audio']);
     }
 
     public function testProvidersFiltersDisabledAndInvalidEntries(): void

@@ -14,7 +14,7 @@ use Zephyrisle\FlarumZaiBot\Job\Concerns\BuildsBotTools;
 use Zephyrisle\FlarumZaiBot\Job\Concerns\ManagesBotUser;
 use Zephyrisle\FlarumZaiBot\Model\BotAffinity;
 use Zephyrisle\FlarumZaiBot\Service\AIService;
-use Zephyrisle\FlarumZaiBot\Service\ImageExtractor;
+use Zephyrisle\FlarumZaiBot\Service\MediaExtractor;
 use Zephyrisle\FlarumZaiBot\Service\Media\FileParsingService;
 use Zephyrisle\FlarumZaiBot\Service\Media\LinkParsingService;
 use Zephyrisle\FlarumZaiBot\Service\MemoryService;
@@ -123,9 +123,15 @@ class GenerateReplyForPost extends AbstractJob
         $contentHtml = $post->formatContent();
         $plainContent = trim(strip_tags((string) $content));
 
-        // 纯媒体消息（只有图片没有文字）时给出文本锚点，方便模型理解
-        if ($plainContent === '' && !empty(ImageExtractor::fromHtml($contentHtml))) {
+        // 纯媒体消息（只有图片/视频/音频没有文字）时给出文本锚点，方便模型理解
+        if ($plainContent === '' && !empty(MediaExtractor::fromHtml($contentHtml))) {
             $plainContent = '（用户发布了一条纯媒体消息，请查看后回应）';
+        }
+        if ($plainContent === '' && !empty(MediaExtractor::videosFromHtml($contentHtml))) {
+            $plainContent = '（用户发布了一条纯视频消息，请查看后回应）';
+        }
+        if ($plainContent === '' && !empty(MediaExtractor::audiosFromHtml($contentHtml))) {
+            $plainContent = '（用户发布了一条纯音频消息，请查看后回应）';
         }
 
         $history = [];
@@ -149,7 +155,7 @@ class GenerateReplyForPost extends AbstractJob
             ];
 
             // 历史帖子中的图片，供支持识图的模型参考（AIService 会按最近的优先截取）
-            foreach (ImageExtractor::fromHtml($prevPost->formatContent(), 1) as $imgUrl) {
+            foreach (MediaExtractor::fromHtml($prevPost->formatContent(), 1) as $imgUrl) {
                 $historyImages[] = [
                     'url' => $imgUrl,
                     'author' => $authorName,
@@ -219,14 +225,22 @@ class GenerateReplyForPost extends AbstractJob
             return;
         }
 
-        // ===== 消息合并：构建整体提示词与图片列表 =====
+        // ===== 消息合并：构建整体提示词与多模态媒体列表 =====
         $prompt = $plainContent;
-        $images = ImageExtractor::fromHtml($contentHtml);
+        $images = MediaExtractor::fromHtml($contentHtml);
+        $videos = MediaExtractor::videosFromHtml($contentHtml);
+        $audios = MediaExtractor::audiosFromHtml($contentHtml);
         if ($mergeSeconds > 0 && !empty($mergedPosts)) {
             $prompt = $this->buildMergedPrompt($post, $plainContent, $mergedPosts);
             foreach ($mergedPosts as $mergedPost) {
-                foreach (ImageExtractor::fromHtml($mergedPost->formatContent(), 2) as $imgUrl) {
+                foreach (MediaExtractor::fromHtml($mergedPost->formatContent(), 2) as $imgUrl) {
                     $images[] = $imgUrl;
+                }
+                foreach (MediaExtractor::videosFromHtml($mergedPost->formatContent(), 1) as $videoUrl) {
+                    $videos[] = $videoUrl;
+                }
+                foreach (MediaExtractor::audiosFromHtml($mergedPost->formatContent(), 1) as $audioUrl) {
+                    $audios[] = $audioUrl;
                 }
             }
             $lastMergedId = end($mergedPosts)->id;
@@ -299,8 +313,10 @@ class GenerateReplyForPost extends AbstractJob
             'replied_recently' => $repliedRecently,
             'replied_recently_seconds_ago' => $repliedRecentlySecondsAgo,
             'last_bot_reply_excerpt' => $lastBotReplyExcerpt,
-            // 当前消息（含合并窗口内帖子）中的图片，供支持识图的模型查看（见 AIService）
+            // 当前消息（含合并窗口内帖子）中的多模态媒体，供支持多模态的模型查看（见 AIService）
             'images' => $images,
+            'videos' => $videos,
+            'audios' => $audios,
             // 对话历史帖子中的图片，让模型能结合更早的图片回答
             'history_images' => $historyImages,
         ];
