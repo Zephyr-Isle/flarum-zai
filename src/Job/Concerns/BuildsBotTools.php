@@ -7,6 +7,7 @@ use Zephyrisle\FlarumZaiBot\Service\ExpressionService;
 use Zephyrisle\FlarumZaiBot\Service\MemoryService;
 use Zephyrisle\FlarumZaiBot\Service\PortraitService;
 use Zephyrisle\FlarumZaiBot\Service\RelationService;
+use Zephyrisle\FlarumZaiBot\Service\StreakService;
 use Zephyrisle\FlarumZaiBot\Service\Tool\BestAnswerTool;
 use Zephyrisle\FlarumZaiBot\Service\Tool\DraftTool;
 use Zephyrisle\FlarumZaiBot\Service\Tool\FlagTool;
@@ -22,6 +23,7 @@ use Zephyrisle\FlarumZaiBot\Service\Tool\RecallMemoryTool;
 use Zephyrisle\FlarumZaiBot\Service\Tool\SearchTool;
 use Zephyrisle\FlarumZaiBot\Service\Tool\SendStickerTool;
 use Zephyrisle\FlarumZaiBot\Service\Tool\StickerTool;
+use Zephyrisle\FlarumZaiBot\Service\Tool\StreakTool;
 use Zephyrisle\FlarumZaiBot\Service\Tool\UpdatePortraitTool;
 use Zephyrisle\FlarumZaiBot\Service\Tool\UpdateRelationTool;
 use Zephyrisle\FlarumZaiBot\Service\Tool\UserInfoTool;
@@ -80,6 +82,15 @@ trait BuildsBotTools
         // cloudnest/user-emoji: 用户自定义表情包
         if (class_exists(\CloudNest\Emoji\Emoji::class)) {
             $tools[] = new UserEmojiTool($userId);
+        }
+
+        // cloudnest「续火花」：查询与对方的互动火花状态
+        if (class_exists(\CloudNest\Emoji\Streak::class)) {
+            try {
+                $tools[] = new StreakTool(resolve(StreakService::class), $userId);
+            } catch (\Exception $e) {
+                // 测试环境或依赖缺失时跳过
+            }
         }
 
         // 个人资料管理：修改机器人自己的头像、背景图、简介

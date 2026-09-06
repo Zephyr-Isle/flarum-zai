@@ -39,6 +39,7 @@ zephyrisle-flarum-zai-bot:
       reply_cooldown_help: 距上次回复不超过该秒数时，AI 会结合上下文自主决定是否再次回复（必要时可保持沉默）。设为 0 表示总是回复。
       system_prompt_label: 系统提示词
       message_reply_enabled_label: '启用私信 AI 回复（需要 flarum/messages）'
+      chat_reply_enabled_label: '启用聊天频道 AI 回复（需要 ramon/chat）'
       bot_display_name_label: 机器人显示名称
       timezone_label: 时区
       jina_optimization_mode_label: 'Jina 优化模式（启用 Jina AI 网页搜索）'

@@ -34,6 +34,13 @@ return [
                 ->listen(\Flarum\Messages\DialogMessage\Event\Created::class, ReplyToMessage::class),
         ]),
 
+    // ramon/chat: 实时聊天频道 AI 回复
+    (new Extend\Conditional())
+        ->whenExtensionEnabled('ramon-chat', fn () => [
+            (new Extend\Event())
+                ->listen(\Ramon\Chat\Event\MessageWasSent::class, \Zephyrisle\FlarumZaiBot\Listener\ReplyToChatMessage::class),
+        ]),
+
     // fof/merge-discussions: 记录讨论合并事件到上下文
     (new Extend\Conditional())
         ->whenExtensionEnabled('fof-merge-discussions', fn () => [
@@ -70,6 +77,7 @@ return [
         ->default('flarum-zai-bot.jina_optimization_mode', false)
         ->default('flarum-zai-bot.jina_use_builtin_proxy', false)
         ->default('flarum-zai-bot.message_reply_enabled', false)
+        ->default('flarum-zai-bot.chat_reply_enabled', false)
         ->default('flarum-zai-bot.random_reply_chance', 0)
         ->default('flarum-zai-bot.reply_cooldown', 30)
         ->default('flarum-zai-bot.embedding_api_url', \Zephyrisle\FlarumZaiBot\Service\EmbeddingService::DEFAULT_API_URL)

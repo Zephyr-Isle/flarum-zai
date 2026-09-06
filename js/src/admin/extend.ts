@@ -46,6 +46,12 @@ export default [
             default: false,
         }))
         .setting(() => ({
+            setting: 'flarum-zai-bot.chat_reply_enabled',
+            label: t('chat_reply_enabled_label'),
+            type: 'boolean',
+            default: false,
+        }))
+        .setting(() => ({
             setting: 'flarum-zai-bot.bot_display_name',
             label: t('bot_display_name_label'),
             type: 'text',

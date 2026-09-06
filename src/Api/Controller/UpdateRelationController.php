@@ -22,7 +22,10 @@ class UpdateRelationController implements RequestHandlerInterface
             $actor = RequestUtil::getActor($request);
             $actor->assertAdmin();
 
-            $userId = (int) ($request->getAttribute('userId') ?? 0);
+            // 路由参数在 Flarum 中存放在 routeParameters 属性（并合并进 query params），
+            // 不能直接 getAttribute('userId')，否则恒为 null 导致 invalid_user。
+            $routeParams = $request->getAttribute('routeParameters') ?? [];
+            $userId = (int) ($routeParams['userId'] ?? $request->getQueryParams()['userId'] ?? $request->getAttribute('userId') ?? 0);
             if ($userId <= 0) {
                 return new JsonResponse(['error' => 'invalid_user'], 422);
             }

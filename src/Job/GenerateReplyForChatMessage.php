@@ -2,8 +2,6 @@
 
 namespace Zephyrisle\FlarumZaiBot\Job;
 
-use Flarum\Messages\DialogMessage;
-use Flarum\Messages\DialogMessage\Event\Created;
 use Flarum\Queue\AbstractJob;
 use Flarum\Settings\SettingsRepositoryInterface;
 use Illuminate\Contracts\Events\Dispatcher;
@@ -19,7 +17,16 @@ use Zephyrisle\FlarumZaiBot\Service\PortraitService;
 use Zephyrisle\FlarumZaiBot\Service\StreakService;
 use Zephyrisle\FlarumZaiBot\Service\Text\PastePlaceholder;
 
-class GenerateReplyForMessage extends AbstractJob
+/**
+ * ramon/chat 聊天频道回复任务。
+ *
+ * 由 ReplyToChatMessage 监听器在 MessageWasSent 事件后异步派发：以 zai-bot
+ * 账号（机器人用户）身份回复任意类型的聊天频道（直聊/群组/文字频道）中的人类消息。
+ *
+ * 兼容性前提：ramon/chat 未安装时（任务积压或扩展被移除）静默跳过；所有对
+ * Ramon\Chat 空间的引用都在运行时存在性检查之后才执行。
+ */
+class GenerateReplyForChatMessage extends AbstractJob
 {
     use BuildsBotTools;
     use ManagesBotUser;
@@ -33,50 +40,65 @@ class GenerateReplyForMessage extends AbstractJob
 
     public function handle(AIService $ai, SettingsRepositoryInterface $settings, Dispatcher $events): void
     {
-        $message = DialogMessage::find($this->messageId);
-
-        if (!$message || !$message->dialog) {
+        if (!class_exists(\Ramon\Chat\Message::class)
+            || !class_exists(\Ramon\Chat\Event\MessageWasSent::class)
+            || !class_exists(\Ramon\Chat\Service\MessageDispatcher::class)) {
             return;
         }
 
-        $dialog = $message->dialog;
+        $message = \Ramon\Chat\Message::find($this->messageId);
 
-        if (!(bool) $settings->get('flarum-zai-bot.message_reply_enabled', false)) {
+        if (!$message || !$message->channel) {
+            return;
+        }
+
+        // 系统消息/机器人消息不回复（仅普通文本消息由人类用户发送）
+        if ($message->type !== \Ramon\Chat\Message::TYPE_TEXT || $message->user_id === null) {
+            return;
+        }
+
+        $channel = $message->channel;
+
+        if (!(bool) $settings->get('flarum-zai-bot.chat_reply_enabled', false)) {
             return;
         }
 
         $botUsername = $settings->get('flarum-zai-bot.username', 'AIGirl');
-
         $botUser = $this->getBotUser($botUsername);
 
-        if ($message->user_id === $botUser->id) {
+        // 机器人自己发出的消息（含兜底直接写入派发的 MessageWasSent）不二次触发
+        if ((int) $message->user_id === (int) $botUser->id) {
             return;
         }
 
-        $dialogUserIds = $dialog->users()->pluck('user_id')->toArray();
-
-        if (!in_array($botUser->id, $dialogUserIds, true)) {
+        // 只在机器人是成员的频道回复（直聊/群组/文字频道均可），保证回复对频道内用户可见
+        if ($channel->membershipFor($botUser) === null) {
             return;
         }
 
         $author = $message->user;
 
         // flarum/suspend: 已封禁用户不触发回复
-        // （flarum/suspend 只有 suspended_until 列，没有 is_suspended 属性）
         if ($this->authorIsSuspended($author)) {
-            error_log('[flarum-zai-bot] GenerateReplyForMessage: user suspended, skip. user_id=' . $author->id);
+            error_log('[flarum-zai-bot] GenerateReplyForChatMessage: user suspended, skip. user_id=' . $author->id);
             return;
         }
 
-        $isVerified = false;
-        if ($author && class_exists(\Ramon\Verified\TierResolver::class)) {
-            $resolver = resolve(\Ramon\Verified\TierResolver::class);
-            $isVerified = $resolver->isVerified($author);
+        // 对话对象：直聊频道取另一位参与者；一般频道取消息作者
+        $targetUser = $author;
+        if ($channel->isDirect()) {
+            $other = $channel->participants()->whereKeyNot($botUser->id)->first();
+            if ($other) {
+                $targetUser = $other;
+            }
         }
+        $userId = $targetUser ? (int) $targetUser->id : null;
 
+        // ===== 对话历史：本频道该条消息之前的近期人类消息 =====
         $history = [];
         $historyImages = [];
-        $recentMessages = DialogMessage::where('dialog_id', $dialog->id)
+        $recentMessages = \Ramon\Chat\Message::query()
+            ->where('channel_id', $channel->id)
             ->where('id', '<', $message->id)
             ->orderBy('id', 'desc')
             ->take(10)
@@ -84,20 +106,25 @@ class GenerateReplyForMessage extends AbstractJob
             ->reverse();
 
         foreach ($recentMessages as $prevMsg) {
+            if ($prevMsg->type !== \Ramon\Chat\Message::TYPE_TEXT
+                || $prevMsg->user_id === null
+                || (int) $prevMsg->user_id === (int) $botUser->id) {
+                continue;
+            }
+
             $prevAuthor = $prevMsg->user;
-            $msgId = $prevMsg->id;
             $authorName = $prevAuthor ? $prevAuthor->display_name : '未知';
             $history[] = [
                 'author' => $authorName,
                 'content' => PastePlaceholder::normalize((string) $prevMsg->content),
             ];
 
-            // 历史私信中的图片，供支持识图的模型参考（AIService 会按最近的优先截取）
+            // 历史消息中的图片，供支持识图的模型参考（AIService 按最近的优先截取）
             foreach (MediaExtractor::fromHtml($prevMsg->formatContent(), 1) as $imgUrl) {
                 $historyImages[] = [
                     'url' => $imgUrl,
                     'author' => $authorName,
-                    'label' => "私信消息 #{$msgId}（{$authorName}）",
+                    'label' => "聊天消息 #{$prevMsg->id}（{$authorName}）",
                 ];
             }
         }
@@ -105,20 +132,18 @@ class GenerateReplyForMessage extends AbstractJob
         $affinity = null;
         $portraitSummary = null;
         $memories = [];
-        $userId = $author ? $author->id : null;
 
-        if ($author) {
-            $affinity = BotAffinity::getOrCreate($author->id);
+        if ($targetUser) {
+            $affinity = BotAffinity::getOrCreate($targetUser->id);
 
-            // 黑名单熔断：好感度过低被自动（或管理员手动）拉黑时，不再触发任何 LLM 思考
+            // 黑名单熔断：好感度过低被拉黑时不再触发任何 LLM 思考
             if ($affinity->blacklisted) {
-                error_log('[flarum-zai-bot] GenerateReplyForMessage: user blacklisted, skip. user_id=' . $author->id);
+                error_log('[flarum-zai-bot] GenerateReplyForChatMessage: user blacklisted, skip. user_id=' . $targetUser->id);
                 return;
             }
 
             try {
-                $portraitService = resolve(PortraitService::class);
-                $portraitSummary = $portraitService->getPortraitSummary($author->id);
+                $portraitSummary = resolve(PortraitService::class)->getPortraitSummary($targetUser->id);
             } catch (\Exception $e) {
             }
 
@@ -127,8 +152,7 @@ class GenerateReplyForMessage extends AbstractJob
                 if ($memoryService->isAvailable()) {
                     $embedding = $memoryService->generateEmbedding(PastePlaceholder::normalize((string) $message->content));
                     if ($embedding) {
-                        // 混合检索：向量 + BM25 关键词双路召回（query 供关键词路使用）
-                        $memories = $memoryService->searchMemories($author->id, $embedding, 5, PastePlaceholder::normalize((string) $message->content));
+                        $memories = $memoryService->searchMemories($targetUser->id, $embedding, 5, PastePlaceholder::normalize((string) $message->content));
                     }
                 }
             } catch (\Exception $e) {
@@ -136,11 +160,10 @@ class GenerateReplyForMessage extends AbstractJob
         }
 
         $context = [
-            'channel' => 'message',
+            'channel' => 'chat',
             'user_id' => $userId,
-            'username' => $author ? $author->username : 'unknown',
-            'display_name' => $author ? $author->display_name : '未知',
-            'is_verified' => $isVerified,
+            'username' => $targetUser ? $targetUser->username : 'unknown',
+            'display_name' => $targetUser ? $targetUser->display_name : '未知',
             'affinity_score' => $affinity?->total_score ?? null,
             'affinity_trust' => $affinity?->trust ?? null,
             'affinity_intimacy' => $affinity?->intimacy ?? null,
@@ -150,63 +173,30 @@ class GenerateReplyForMessage extends AbstractJob
             'portrait_summary' => $portraitSummary,
             'memories' => $memories,
             'conversation_history' => $history,
-            // 当前私信中的多模态媒体（http(s)/data URI），供支持多模态的模型查看（见 AIService）
+            // 当前聊天消息中的多模态媒体（http(s)/data URI），供支持多模态的模型查看
             'images' => MediaExtractor::fromHtml($message->formatContent()),
             'videos' => MediaExtractor::videosFromHtml($message->formatContent()),
             'audios' => MediaExtractor::audiosFromHtml($message->formatContent()),
-            // 对话历史私信中的图片，让模型能结合更早的图片回答
             'history_images' => $historyImages,
+            // 频道信息
+            'discussion_title' => $channel->name ?: ('聊天频道 #' . $channel->id),
         ];
 
-        if ($author) {
-            $context['joined_at'] = $author->joined_at ? $author->joined_at->format('Y-m-d H:i:s') : null;
-            $context['post_count'] = $author->posts()->count();
-            $context['group_names'] = $author->groups->pluck('name_singular')->implode(', ') ?: null;
+        if ($targetUser) {
+            $context['joined_at'] = $targetUser->joined_at ? $targetUser->joined_at->format('Y-m-d H:i:s') : null;
+            $context['post_count'] = $targetUser->posts()->count();
+            $context['group_names'] = $targetUser->groups->pluck('name_singular')->implode(', ') ?: null;
 
-            // flarum/nicknames: 优先使用昵称作为显示名
-            if (class_exists(\Flarum\Nicknames\NicknameDriver::class) && !empty($author->nickname)) {
-                $context['display_name'] = $author->nickname;
+            if (class_exists(\Flarum\Nicknames\NicknameDriver::class) && !empty($targetUser->nickname)) {
+                $context['display_name'] = $targetUser->nickname;
             }
 
-            if (class_exists(\FoF\UserBio\Event\BioChanged::class) && $author->bio) {
-                $context['bio'] = strip_tags($author->bio);
-            }
-
-            if (class_exists(\Datlechin\Birthdays\AddBirthdayValidation::class) && $author->birthday) {
-                $context['birthday'] = $author->birthday;
-            }
-
-            if (class_exists(\Ramon\Verified\Models\UserVerification::class)) {
-                $verification = \Ramon\Verified\Models\UserVerification::where('user_id', $author->id)->first();
-                if ($verification) {
-                    $context['verified_tier'] = $verification->verified_tier;
-                    $context['verified_at'] = $verification->verified_at ? $verification->verified_at->format('Y-m-d H:i:s') : null;
-                }
-            }
-
-            // fof/socialprofile: 注入用户社交资料
-            if (class_exists(\FoF\SocialProfile\Listeners\SaveUserPreferences::class) && !empty($author->social_buttons)) {
-                try {
-                    $socialButtons = json_decode($author->social_buttons, true);
-                    if (is_array($socialButtons) && !empty($socialButtons)) {
-                        $socialLines = [];
-                        foreach ($socialButtons as $button) {
-                            $label = $button['label'] ?? ($button['type'] ?? '社交');
-                            $url = $button['url'] ?? '';
-                            if ($url !== '') {
-                                $socialLines[] = "- {$label}: {$url}";
-                            }
-                        }
-                        if (!empty($socialLines)) {
-                            $context['social_profiles'] = implode("\n", $socialLines);
-                        }
-                    }
-                } catch (\Exception $e) {
-                }
+            if (class_exists(\FoF\UserBio\Event\BioChanged::class) && $targetUser->bio) {
+                $context['bio'] = strip_tags($targetUser->bio);
             }
         }
 
-        // 纯媒体消息（只有图片/视频/音频没有文字）时给出文本锚点；私聊任何消息都会触发回复（媒体唤醒）
+        // 纯媒体消息（只有图片/视频/音频没有文字）时给出文本锚点
         $messageContent = PastePlaceholder::normalize((string) $message->content);
         $plain = trim(strip_tags($messageContent));
         $hasMedia = !empty(MediaExtractor::fromHtml($message->formatContent()))
@@ -223,18 +213,17 @@ class GenerateReplyForMessage extends AbstractJob
         // ===== 媒体解析：链接摘要与文件信息注入 =====
         $context['media_context'] = $this->buildMediaContext($message->formatContent(), $settings);
 
-        // ===== 上下文注入：场景/身份环境字段 + 讨论近期事件 =====
-        // 私信无主动/被动之分，只要注入时机不是关闭即注入（见 ContextInjectionService）
+        // ===== 上下文注入：场景/身份环境字段 =====
         try {
             $ctxInjection = resolve(\Zephyrisle\FlarumZaiBot\Service\Context\ContextInjectionService::class);
             $context['injected_context'] = $ctxInjection->buildInjectedContext([
-                'channel' => 'message',
+                'channel' => 'chat',
                 'wake_type' => null,
                 'discussion_id' => null,
-                'discussion_title' => null,
+                'discussion_title' => $channel->name ?: null,
                 'user_id' => $userId,
-                'username' => $author ? $author->username : null,
-                'display_name' => $author ? $author->display_name : null,
+                'username' => $targetUser ? $targetUser->username : null,
+                'display_name' => $targetUser ? $targetUser->display_name : null,
                 'group_names' => $context['group_names'] ?? null,
             ]);
         } catch (\Exception $e) {
@@ -243,7 +232,7 @@ class GenerateReplyForMessage extends AbstractJob
 
         $tools = $this->buildBotTools($botUser->id, $userId, $settings, 'private_message');
 
-        // ===== 关系网与表达风格库注入 =====
+        // ===== 关系网、表达风格库与火花注入 =====
         try {
             if ((bool) $settings->get('flarum-zai-bot.relation_network_enabled', true) && $userId) {
                 $context['relation_summary'] = resolve(\Zephyrisle\FlarumZaiBot\Service\RelationService::class)->buildSummary($userId);
@@ -256,19 +245,16 @@ class GenerateReplyForMessage extends AbstractJob
                     $context['expression_rules'] = $expressionService->buildInjectionText($activeRules);
                 }
             }
-        } catch (\Exception $e) {
-            error_log('[flarum-zai-bot] GenerateReplyForMessage: relation/expression context failed: ' . $e->getMessage());
-        }
 
-        // cloudnest「续火花」：读入该会话的火花状态，供模型在回复中自然提及
-        if ($userId) {
-            try {
-                $streak = resolve(StreakService::class)->readForDialog($botUser->id, $userId, $dialog->id);
+            // cloudnest「续火花」：直聊频道可读入双方火花状态（无 dialog_id 时按参与者对匹配）
+            if ($userId) {
+                $streak = resolve(StreakService::class)->readForPair($botUser->id, $userId);
                 if ($streak !== null) {
                     $context['streak'] = $streak;
                 }
-            } catch (\Exception $e) {
             }
+        } catch (\Exception $e) {
+            error_log('[flarum-zai-bot] GenerateReplyForChatMessage: relation/expression/streak context failed: ' . $e->getMessage());
         }
 
         $reply = $ai->generateReply($prompt, $context, $tools);
@@ -277,28 +263,59 @@ class GenerateReplyForMessage extends AbstractJob
             $reply = $ai->parseSecretEval($reply, $userId);
         }
 
-        // 兜底：清除回复中残留的粘贴占位符，防止把占位符原样发给用户
+        // 兜底：清除回复中残留的粘贴占位符
         if ($reply) {
             $reply = PastePlaceholder::scrubReply($reply);
         }
 
         if (!$reply) {
-            error_log('[flarum-zai-bot] GenerateReplyForMessage: generateReply returned null. message_id=' . $message->id);
+            error_log('[flarum-zai-bot] GenerateReplyForChatMessage: generateReply returned null. message_id=' . $message->id);
             return;
         }
 
-        if ($author && $userId) {
+        if (!$channel->acceptsMessages()) {
+            return;
+        }
+
+        // 频道最大消息长度钳制，避免被 ramon-chat 的 content 校验拒绝
+        $maxLen = $channel->maxMessageLength(3000);
+        if ($maxLen > 0 && mb_strlen($reply) > $maxLen) {
+            $reply = mb_substr($reply, 0, $maxLen);
+        }
+
+        // ===== 发送回复 =====
+        // 优先走 ramon/chat 官方派发路径（校验/限流/慢速模式/提及同步/未读计数/事件派发）。
+        // 若因频道限制（慢速模式、限流、内容校验）被拒，兜底为最小化直接写入，
+        // 保证机器人仍能回复、且不因派发器异常导致队列任务反复重试。
+        try {
+            resolve(\Ramon\Chat\Service\MessageDispatcher::class)
+                ->send($channel, $botUser, $reply);
+        } catch (\Throwable $e) {
+            error_log('[flarum-zai-bot] GenerateReplyForChatMessage: MessageDispatcher send failed, fallback direct: ' . $e->getMessage());
+            try {
+                $botMessage = \Ramon\Chat\Message::build($channel, $botUser, $reply);
+                $botMessage->save();
+                $botMessage->refresh();
+                $channel->refreshMetadata()->save();
+                $events->dispatch(new \Ramon\Chat\Event\MessageWasSent($botMessage, $botUser));
+            } catch (\Throwable $e2) {
+                error_log('[flarum-zai-bot] GenerateReplyForChatMessage: fallback send failed: ' . $e2->getMessage());
+                return;
+            }
+        }
+
+        // ===== 记忆归档（异步不影响发送结果） =====
+        if ($targetUser && $userId) {
             try {
                 $memoryService = resolve(MemoryService::class);
                 if ($memoryService->isAvailable()) {
                     $embedding = $memoryService->generateEmbedding($messageContent . "\n" . strip_tags($reply));
                     if ($embedding) {
-                        // 原文与归档：保留来源消息原文与来源元信息（对话框/消息），便于核验
-                        $memoryService->storeMemory($userId, "私信对话：{$messageContent}\nAI回复：" . strip_tags($reply), $embedding, [
+                        $memoryService->storeMemory($userId, "聊天频道消息：{$messageContent}\nAI回复：" . strip_tags($reply), $embedding, [
                             'source_text' => mb_substr($messageContent, 0, 500),
                             'source_meta' => json_encode([
-                                'type' => 'private_message',
-                                'dialog_id' => $dialog->id,
+                                'type' => 'chat',
+                                'channel_id' => $channel->id,
                                 'message_id' => $message->id,
                             ], JSON_UNESCAPED_UNICODE),
                         ]);
@@ -307,43 +324,10 @@ class GenerateReplyForMessage extends AbstractJob
             } catch (\Exception $e) {
             }
         }
-
-        $botMessage = new DialogMessage();
-        $botMessage->dialog_id = $dialog->id;
-        $botMessage->user_id = $botUser->id;
-        // 显式传入 bot 作为格式化 actor，与论坛 Job 的 setContentAttribute($reply, $botUser)
-        // 保持一致，避免 content 赋值时触发 $this->user 的额外查询且 actor 为 null。
-        $botMessage->setContentAttribute($reply, $botUser);
-        $botMessage->save();
-
-        $botMessage->refresh();
-
-        $dialog->setLastMessage($botMessage);
-        $dialog->save();
-
-        // 触发 Created 事件：让 flarum/realtime（Warble）实时推送机器人的私信，
-        // 并让其他监听该事件的扩展（通知、统计等）感知机器人的回复。
-        // 我们自己的 ReplyToMessage 监听器会识别出这是机器人的消息而不会再次派发任务。
-        // 消息已持久化，任何同步监听器的异常都不应让任务失败重试（否则会重复生成回复）。
-        try {
-            $events->dispatch(new Created($botMessage));
-        } catch (\Throwable $e) {
-            error_log('[flarum-zai-bot] GenerateReplyForMessage: Created event dispatch failed: ' . $e->getMessage());
-        }
-
-        // 续火花：机器人已回复，替双方在 cloudnest 会话中今日互相活跃
-        if ($author && $userId) {
-            try {
-                resolve(StreakService::class)->touch($botUser->id, $userId, (string) $dialog->id);
-            } catch (\Throwable $e) {
-                error_log('[flarum-zai-bot] GenerateReplyForMessage: streak touch failed: ' . $e->getMessage());
-            }
-        }
     }
 
     /**
      * 用户是否处于封禁期（flarum/suspend）。
-     * suspended_until 依据扩展版本可能为字符串或 Carbon 实例，两者都兼容。
      */
     protected function authorIsSuspended(?\Flarum\User\User $author): bool
     {

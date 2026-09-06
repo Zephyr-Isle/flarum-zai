@@ -19,6 +19,7 @@ use Zephyrisle\FlarumZaiBot\Service\Media\FileParsingService;
 use Zephyrisle\FlarumZaiBot\Service\Media\LinkParsingService;
 use Zephyrisle\FlarumZaiBot\Service\MemoryService;
 use Zephyrisle\FlarumZaiBot\Service\PortraitService;
+use Zephyrisle\FlarumZaiBot\Service\Text\PastePlaceholder;
 use Zephyrisle\FlarumZaiBot\Service\Wake\WakeService;
 
 class GenerateReplyForPost extends AbstractJob
@@ -119,9 +120,10 @@ class GenerateReplyForPost extends AbstractJob
 
         // $post->content 是 Formatter::unparse 后的 Markdown 源文（Flarum 2.x），
         // 图片提取 / 媒体解析 / 引用检测需要渲染后的 HTML，用 formatContent() 获取。
+        // 粘贴占位符（[Pasted ~N lines]）在进入唤醒判定与模型前先替换为说明文字，避免被复述。
         $content = $post->content;
         $contentHtml = $post->formatContent();
-        $plainContent = trim(strip_tags((string) $content));
+        $plainContent = trim(PastePlaceholder::normalize(strip_tags((string) $content)));
 
         // 纯媒体消息（只有图片/视频/音频没有文字）时给出文本锚点，方便模型理解
         if ($plainContent === '' && !empty(MediaExtractor::fromHtml($contentHtml))) {
@@ -151,7 +153,7 @@ class GenerateReplyForPost extends AbstractJob
             $history[] = [
                 'post_id' => $postId,
                 'author' => $authorName,
-                'content' => strip_tags($prevPost->content),
+                'content' => PastePlaceholder::normalize(strip_tags((string) $prevPost->content)),
             ];
 
             // 历史帖子中的图片，供支持识图的模型参考（AIService 会按最近的优先截取）
@@ -257,7 +259,7 @@ class GenerateReplyForPost extends AbstractJob
             $repliedRecentlySecondsAgo = max(0, (int) Carbon::now()->diffInSeconds($lastBotReply->created_at));
             if ($repliedRecentlySecondsAgo <= $cooldownSeconds) {
                 $repliedRecently = true;
-                $lastBotReplyExcerpt = mb_substr(strip_tags((string) $lastBotReply->content), 0, 200);
+                $lastBotReplyExcerpt = mb_substr(PastePlaceholder::normalize(strip_tags((string) $lastBotReply->content)), 0, 200);
             }
         }
 
@@ -564,7 +566,7 @@ class GenerateReplyForPost extends AbstractJob
                 if ($repostedPost && $repostedPost->original_post_id) {
                     $originalPost = \Flarum\Post\Post::find($repostedPost->original_post_id);
                     if ($originalPost) {
-                        $originalContent = mb_substr(strip_tags((string) $originalPost->content), 0, 300);
+                        $originalContent = mb_substr(PastePlaceholder::normalize(strip_tags((string) $originalPost->content)), 0, 300);
                         $context['repost_context'] = "这是一条转发内容，原文：{$originalContent}";
                     }
                 }
@@ -620,6 +622,11 @@ class GenerateReplyForPost extends AbstractJob
             $reply = $ai->parseSecretEval($reply, $userId);
         }
 
+        // 兜底：清除回复中残留的粘贴占位符，防止把占位符原样发送给用户
+        if ($reply) {
+            $reply = PastePlaceholder::scrubReply($reply);
+        }
+
         // AI 自主决定保持沉默（回复中包含跳过标记）。
         // 注意：标记检测为包含匹配——宁可误吞一条回复，也不把标记泄漏给用户。
         if ($reply && $this->shouldSkipReply($reply)) {
@@ -666,7 +673,7 @@ class GenerateReplyForPost extends AbstractJob
                     if ($embedding) {
                         // 原文与归档：保留来源消息原文与来源元信息（讨论/帖子），便于核验与重新总结
                         $memoryService->storeMemory($userId, "用户：{$context['display_name']} 在讨论「{$discussion->title}」中发帖：{$prompt}\nAI回复：" . strip_tags($reply), $embedding, [
-                            'source_text' => mb_substr(strip_tags((string) $post->content), 0, 500),
+                            'source_text' => mb_substr(PastePlaceholder::normalize(strip_tags((string) $post->content)), 0, 500),
                             'source_meta' => json_encode([
                                 'type' => 'discussion_post',
                                 'discussion_id' => $discussion->id,
@@ -859,7 +866,7 @@ class GenerateReplyForPost extends AbstractJob
 
         foreach ($mergedPosts as $mp) {
             $authorName = $mp->user ? $mp->user->display_name : '未知';
-            $lines[] = "帖子 #{$mp->id} {$authorName}：" . trim(strip_tags((string) $mp->content));
+            $lines[] = "帖子 #{$mp->id} {$authorName}：" . trim(PastePlaceholder::normalize(strip_tags((string) $mp->content)));
         }
 
         return "（以下为合并窗口内连续发送的消息，请整体理解后回复）\n\n" . implode("\n\n", $lines);

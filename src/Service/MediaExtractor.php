@@ -15,6 +15,9 @@ use Illuminate\Container\Container;
  */
 class MediaExtractor
 {
+    /** 图片 URL → 已确认的表情包名称 的静态缓存，避免对同一 URL 反复查库 */
+    private static array $emojiNameCache = [];
+
     /**
      * fof/upload 下载 URL 的两种形态（1.x：/api/fof/download/{uuid}，0.x：/assets/files/{uuid}/{name}）。
      * UUID 后要求跟分隔符（/、?、#、&、空白或字符串结束），避免误吞更长字符串中的片段。
@@ -241,11 +244,20 @@ public static function uploadUuids(string $html): array
     /**
      * 图片分类，帮助模型区分普通图片与表情包/动图/贴纸：
      * 返回 image | gif | emoji | sticker。
+     *
+     * cloudnest/user-emoji 扩展的表情包（图片 URL 通常是 fof/upload，进入本方法前已被
+     * resolveUrl 改写为 /api/zai-bot/vision-media/{uuid} 代理形式）会通过数据库反查识别为
+     * 表情包（sticker）；未安装该扩展时静默跳过。
      */
     public static function classify(string $url): string
     {
         $url = strtolower($url);
         $path = strtolower((string) parse_url($url, PHP_URL_PATH));
+
+        // cloudnest 表情包：非本机 fof/upload 图片不让 AI 识别，直接反查数据库
+        if (self::lookupEmojiName($url) !== null) {
+            return 'sticker';
+        }
 
         if (str_ends_with($path, '.gif') || str_contains($url, 'content-type=gif')) {
             return 'gif';
@@ -258,6 +270,60 @@ public static function uploadUuids(string $html): array
         }
 
         return 'image';
+    }
+
+    /**
+     * 反查 cloudnest/user-emoji 表情包名称（未安装该扩展时返回 null）。
+     *
+     * 入参通常是 resolveUrl 改写后的代理 URL（/api/zai-bot/vision-media/{uuid}），
+     * 因此先提取 UUID 按 LIKE 匹配 emojis.emoji_url，再兜底做整串等值匹配。
+     * 结果按 URL 静态缓存，避免多次查询。
+     */
+    public static function lookupEmojiName(string $url): ?string
+    {
+        if (!class_exists(\CloudNest\Emoji\Emoji::class)) {
+            return null;
+        }
+
+        if (array_key_exists($url, self::$emojiNameCache)) {
+            return self::$emojiNameCache[$url];
+        }
+
+        $name = null;
+        try {
+            $uuid = self::extractUuid($url);
+            $query = \CloudNest\Emoji\Emoji::query();
+            if ($uuid !== null) {
+                $query = $query->where('emoji_url', 'LIKE', '%' . $uuid . '%');
+            }
+            $query = $query->orWhere('emoji_url', $url);
+
+            $emoji = $query->first();
+            if ($emoji && !empty($emoji->emoji_name)) {
+                $name = (string) $emoji->emoji_name;
+            }
+        } catch (\Exception $e) {
+            $name = null;
+        }
+
+        self::$emojiNameCache[$url] = $name;
+
+        return $name;
+    }
+
+    /**
+     * 从媒体 URL 中提取 36 位 UUID（本扩展代理 URL 或 fof/upload 两类形态）。
+     */
+    protected static function extractUuid(string $url): ?string
+    {
+        if (preg_match('#/vision-media/([0-9a-fA-F-]{36})#i', $url, $m)) {
+            return strtolower($m[1]);
+        }
+        if (preg_match(self::UPLOAD_URL_PATTERN, $url, $m)) {
+            return strtolower($m[1]);
+        }
+
+        return null;
     }
 
     /**

@@ -57,8 +57,8 @@ class ContextInjectionService
             return false;
         }
 
-        // 私信无“主动/被动”之分：只要不是关闭就注入
-        if ($channel === 'message') {
+        // 私信/聊天无“主动/被动”之分：只要不是关闭就注入
+        if (in_array($channel, ['message', 'chat'], true)) {
             return true;
         }
 
@@ -94,7 +94,11 @@ class ContextInjectionService
 
         // ===== 环境感知：场景与身份字段 =====
         $lines[] = $this->envLine('平台', 'Flarum 论坛', $maxChars);
-        $lines[] = $this->envLine('会话类型', $channel === 'message' ? '私信' : '论坛讨论帖', $maxChars);
+        $lines[] = $this->envLine('会话类型', match (true) {
+            $channel === 'message' => '私信',
+            $channel === 'chat' => '聊天频道',
+            default => '论坛讨论帖',
+        }, $maxChars);
 
         if (!empty($context['discussion_id'])) {
             $lines[] = $this->envLine('讨论ID', (string) $context['discussion_id'], $maxChars);

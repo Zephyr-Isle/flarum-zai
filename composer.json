@@ -23,6 +23,8 @@
     },
     "suggest": {
         "flarum/messages": "Enables AI replies in private messages.",
+        "ramon/chat": "Enables AI replies in realtime chat channels.",
+        "cloudnest/core": "Enables streak (续火花) recognition and user emoji support.",
         "ramon/verified": "Enables user verification status in AI context and user info tool.",
         "ramon/stickers": "Enables sticker browsing and sending tools.",
         "flarum/likes": "Enables post like info query tool.",

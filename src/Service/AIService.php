@@ -82,6 +82,16 @@ class AIService
             $messages[] = ['role' => 'system', 'content' => (string) $context['relation_summary']];
         }
 
+        // cloudnest「续火花」：有火花记录时提供给模型，方便在回复中自然提及或延续
+        if ($userId && !empty($context['streak']) && is_array($context['streak'])) {
+            $streak = $context['streak'];
+            $streakText = "你与该用户的火花：已连续互聊 {$streak['current_streak']} 天（历史最长 {$streak['best_streak']} 天）";
+            if (!empty($streak['last_mutual_date'])) {
+                $streakText .= "，最近互聊日：{$streak['last_mutual_date']}";
+            }
+            $messages[] = ['role' => 'system', 'content' => $streakText . '。在合适的对话里可以自然地提及或延续这份火花。'];
+        }
+
         // 表达风格库：仅已启用且作用域匹配的"怎么说"规则（内容由 ExpressionService 构建）
         if (!empty($context['expression_rules'])) {
             $messages[] = ['role' => 'system', 'content' => (string) $context['expression_rules']];
@@ -460,14 +470,14 @@ class AIService
             $parts[] = $weather;
         }
 
-        if ($channel === 'message') {
-            $parts[] = '对话场景：当前是通过私信聊天与你交流，请以亲切的一对一对话方式回复，语气可以更随意亲密。';
+        if (in_array($channel, ['message', 'chat'], true)) {
+            $parts[] = '对话场景：当前是通过私信/聊天频道与你交流，请以亲切的一对一对话方式回复，语气可以更随意亲密。';
         } else {
             $parts[] = '对话场景：当前是在论坛帖子中回复，请保持适当的公开场合语气，回复内容对其他浏览者也有参考价值。';
         }
 
         $hour = (int) $now->format('H');
-        if ($channel === 'message' && ($hour >= 23 || $hour < 6)) {
+        if (in_array($channel, ['message', 'chat'], true) && ($hour >= 23 || $hour < 6)) {
             $parts[] = "提示：现在时间已晚（{$timeStr}），如果用户在聊天，可以在合适的时候关心一下让用户早点休息，但不要强行结束对话。";
         }
 
@@ -1191,12 +1201,20 @@ class AIService
         foreach ($supportedImages as $url) {
             $kind = $classifyImages ? MediaExtractor::classify($url) : 'image';
             if ($kind !== 'image') {
-                $parts[] = ['type' => 'text', 'text' => match ($kind) {
+                $label = match ($kind) {
                     'emoji' => '（表情包）',
                     'gif' => '（GIF 动图）',
                     'sticker' => '（贴纸）',
                     default => '（图片）',
-                }];
+                };
+                // cloudnest 表情包：若能反查到名称则带上名称，帮助模型在后续回复中引用
+                if ($kind === 'sticker') {
+                    $emojiName = MediaExtractor::lookupEmojiName($url);
+                    if ($emojiName !== null) {
+                        $label = "（表情包「{$emojiName}」）";
+                    }
+                }
+                $parts[] = ['type' => 'text', 'text' => $label];
             }
             $parts[] = ['type' => 'image_url', 'image_url' => ['url' => $url]];
         }

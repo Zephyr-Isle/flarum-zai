@@ -30,7 +30,10 @@ class UpdateMemoryController implements RequestHandlerInterface
         $actor = RequestUtil::getActor($request);
         $actor->assertAdmin();
 
-        $id = (int) $request->getAttribute('id');
+        // 路由参数在 Flarum 中存放在 routeParameters 属性（并合并进 query params），
+        // 不能直接 getAttribute('id')，否则恒为 null 导致 invalid_id。
+        $routeParams = $request->getAttribute('routeParameters') ?? [];
+        $id = (int) ($routeParams['id'] ?? $request->getQueryParams()['id'] ?? $request->getAttribute('id') ?? 0);
         $body = $request->getParsedBody() ?? [];
 
         if ($id <= 0) {

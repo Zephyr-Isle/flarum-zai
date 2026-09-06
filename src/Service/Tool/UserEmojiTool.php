@@ -21,7 +21,7 @@ class UserEmojiTool implements ToolInterface
 
     public function getDescription(): string
     {
-        return '查询用户自定义表情包。action为"list"时列出用户的表情包，为"search"时搜索表情包，为"popular"时获取热门表情包。';
+        return '查询和使用用户自定义表情包。action为"list"时列出我的表情包，为"search"时按名称搜索表情包，为"popular"时获取热门表情包，为"send"时获取要发送给对方的某个表情包的图片地址（query 传表情包名称）。';
     }
 
     public function getParameters(): array
@@ -31,12 +31,12 @@ class UserEmojiTool implements ToolInterface
             'properties' => [
                 'action' => [
                     'type' => 'string',
-                    'description' => '操作类型：list（列出我的表情包）、search（搜索）、popular（热门）',
-                    'enum' => ['list', 'search', 'popular'],
+                    'description' => '操作类型：list（列出我的表情包）、search（搜索）、popular（热门）、send（发送）',
+                    'enum' => ['list', 'search', 'popular', 'send'],
                 ],
                 'query' => [
                     'type' => 'string',
-                    'description' => '搜索关键词（action为search时必填）',
+                    'description' => '表情包名称或搜索关键词（action为search或send时必填）',
                 ],
                 'limit' => [
                     'type' => 'integer',
@@ -64,6 +64,8 @@ class UserEmojiTool implements ToolInterface
                 return $query !== '' ? $this->searchEmojis($query, $limit) : '请提供搜索关键词。';
             case 'popular':
                 return $this->popularEmojis($limit);
+            case 'send':
+                return $query !== '' ? $this->sendEmoji($query) : '请提供要发送的表情包名称。';
             default:
                 return '未知操作：' . $action;
         }
@@ -121,6 +123,26 @@ class UserEmojiTool implements ToolInterface
             return trim($output);
         } catch (\Exception $e) {
             return '搜索表情包失败：' . $e->getMessage();
+        }
+    }
+
+    protected function sendEmoji(string $name): string
+    {
+        try {
+            $emoji = Emoji::where('emoji_name', 'LIKE', '%' . $name . '%')
+                ->orderBy('created_at', 'desc')
+                ->first();
+
+            if (!$emoji) {
+                return "未找到名为「{$name}」的表情包。可先用 search 搜索相近名称。";
+            }
+
+            $emojiName = $emoji->emoji_name ?? '未命名';
+
+            return "要发送的表情包：{$emojiName}，图片地址：{$emoji->emoji_url}\n"
+                . '请将图片以 Markdown 图片形式（![表情包](' . $emoji->emoji_url . ')）嵌入你的回复正文中发给对方，不要添加多余解释。';
+        } catch (\Exception $e) {
+            return '获取表情包失败：' . $e->getMessage();
         }
     }
 

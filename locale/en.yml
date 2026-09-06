@@ -39,6 +39,7 @@ zephyrisle-flarum-zai-bot:
       reply_cooldown_help: When the bot has replied within this many seconds, the AI reviews the new context and decides on its own whether to reply again (it may stay silent). Set to 0 to always reply.
       system_prompt_label: System Prompt
       message_reply_enabled_label: 'Enable AI Replies in Messages (requires flarum/messages)'
+      chat_reply_enabled_label: 'Enable AI Replies in Chat Channels (requires ramon/chat)'
       bot_display_name_label: Bot Display Name
       timezone_label: Timezone
       jina_optimization_mode_label: 'Jina Optimization Mode (enable web search via Jina AI)'
